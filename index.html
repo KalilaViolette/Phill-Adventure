@@ -378,8 +378,11 @@ const SPR = {"idle_open": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAA
 
 const W = 480, H = 160, GROUND_Y = 142;      // ground line in game pixels
 const cv = document.getElementById("game");
-const ctx = cv.getContext("2d");
+let ctx = cv.getContext("2d", { alpha: false });   // the room covers every pixel, so an opaque canvas is cheaper to put on screen
 ctx.imageSmoothingEnabled = false;
+ctx.fillStyle = "#cfd8ee"; ctx.fillRect(0, 0, W, H);   // same color as the screen's background while the sprites load
+const mainCtx = ctx;
+let frameNo = 0;                                   // counts frames, so per-frame work can tell if it already ran
 
 // which input you used last, so prompts say "Press A" with a controller and "Press Space" on a keyboard
 let inputMode = "kbd";            // kbd | pad
@@ -822,6 +825,8 @@ function drawProp(key, x, y) {
   if (im && m) ctx.drawImage(im, Math.round(x) + m[0], Math.round(y) + m[1]);
 }
 function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+// drop what's done from a list without making a new list (filter() every frame adds up to a lot of garbage)
+function keep(arr, test) { let j = 0; for (let i = 0; i < arr.length; i++) { const v = arr[i]; if (test(v)) arr[j++] = v; } arr.length = j; return arr; }
 function addGlowNow(x, y, c) { ctx.fillStyle = c; ctx.globalAlpha = 0.18; ctx.fillRect(x - 8, y - 8, 16, 16); ctx.globalAlpha = 1; }
 function drawPuddle(o) {
   // a glossy puddle lying on the floor: outlined, darker toward the front edge, wet highlights, a few splash drops.
@@ -859,8 +864,7 @@ function drawIceHole(o) {
   const x = Math.round(o.x), w = o.w, g = GROUND_Y, now = performance.now();
   const edge = k => Math.round(Math.sin(k * 1.9) * 2 + Math.sin(k * 0.7) * 2);
   ctx.fillStyle = "#0e2433"; ctx.fillRect(x + 4, g - 1, w - 8, H - g + 1);                        // the drop to the water
-  const wg = ctx.createLinearGradient(0, g + 3, 0, H); wg.addColorStop(0, "#2f6f96"); wg.addColorStop(1, "#103049");
-  ctx.fillStyle = wg; ctx.fillRect(x + 4, g + 3, w - 8, H - g - 3);
+  ctx.fillStyle = GRADS.iceWater(); ctx.fillRect(x + 4, g + 3, w - 8, H - g - 3);
   ctx.fillStyle = "rgba(190, 235, 255, 0.55)";
   for (let i = 0; i < 6; i++) { const rx = x + 14 + ((i * 53 + now / 40) % (w - 34)); ctx.fillRect(Math.round(rx), g + 4 + (i % 3) * 4, 8 + (i % 2) * 6, 1); }
   for (const [fx, fw] of [[0.3, 9], [0.68, 12]]) {                                               // bobbing ice chunks
@@ -876,8 +880,7 @@ function drawIceHole(o) {
 function drawChasm(o) {
   // a deep drop in the cave floor: black depth with a faint glow far below, rocky crumbling edges
   const x = Math.round(o.x), w = o.w, g = GROUND_Y;
-  const cg = ctx.createLinearGradient(0, g, 0, H); cg.addColorStop(0, "#0b0706"); cg.addColorStop(0.45, "#140806"); cg.addColorStop(1, "#a8360e");   // lava glowing far below
-  ctx.fillStyle = cg; ctx.fillRect(x + 3, g - 1, w - 6, H - g + 1);
+  ctx.fillStyle = GRADS.chasm(); ctx.fillRect(x + 3, g - 1, w - 6, H - g + 1);   // lava glowing far below
   for (const side of [0, 1]) {
     const ex = side ? x + w - 8 : x;
     for (let r = 0; r < H - g + 1; r++) {
@@ -946,9 +949,7 @@ function drawObstacle(o) {
     case "fudgedrip": drawProp("fudgedrip", x, g - 74); break;
     case "sprinkles": { // a little flurry of chunky, outlined sprinkles with a soft shadow so they pop off the pastel walls
       const top = mothTop(o), a = o.t * 0.22, cx = x + 6, cy = top + 4;
-      const halo = ctx.createRadialGradient(cx, cy, 1, cx, cy, 10);
-      halo.addColorStop(0, "rgba(70, 30, 45, 0.32)"); halo.addColorStop(1, "rgba(70, 30, 45, 0)");
-      ctx.fillStyle = halo; ctx.fillRect(cx - 10, cy - 10, 20, 20);
+      ctx.save(); ctx.translate(cx, cy); ctx.fillStyle = GRADS.halo(); ctx.fillRect(-10, -10, 20, 20); ctx.restore();
       for (let k = 0; k < 6; k++) {
         const sx = cx + Math.round(Math.cos(a + k * 1.05) * 6), sy = cy + Math.round(Math.sin(a * 1.3 + k * 1.05) * 4);
         const vert = (k + Math.floor(o.t / 10)) % 2 === 0, w = vert ? 2 : 4, h = vert ? 4 : 2;
@@ -1573,6 +1574,8 @@ function audioTick(dt) {
 // Standard layout (Xbox / PlayStation / Switch Pro through the browser): bottom button jumps, right button slides,
 // left button or right bumper swings the sword, top button or left bumper holds the shield, Start pauses, Back starts over.
 // In menus the D-pad (or left stick) moves the highlight, the bottom button picks it, the right button goes back.
+const PAD_KEYS = ["jump", "slide", "sword", "shield", "start", "back", "a", "b", "up", "down", "left", "right"];
+const PAD_DIRS = [["up", 0, -1], ["down", 0, 1], ["left", -1, 0], ["right", 1, 0]];
 function padDown(gp, i) { const b = gp.buttons[i]; return !!b && (b.pressed || b.value > 0.5); }
 function padKind(id) {
   if (/xbox|xinput|045e/i.test(id)) return "xbox";                       // newer Xbox pads are also called "Wireless Controller"
@@ -1581,8 +1584,11 @@ function padKind(id) {
   return "xbox";
 }
 function currentPad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()] : [];
-  return pads.find(p => p && p.connected && p.index === gpad.index) || pads.find(p => p && p.connected) || null;
+  if (!navigator.getGamepads) return null;
+  const pads = navigator.getGamepads();
+  let any = null;
+  for (let i = 0; i < pads.length; i++) { const p = pads[i]; if (!p || !p.connected) continue; if (p.index === gpad.index) return p; if (!any) any = p; }
+  return any;
 }
 function padCanRumble() { const gp = gpad.connected && currentPad(); return !!(gp && gp.vibrationActuator); }
 function rumble(strong, weak, ms) {
@@ -1746,11 +1752,10 @@ function pollPad() {
     left: padDown(gp, 14) || sx < -0.5, right: padDown(gp, 15) || sx > 0.5,
   };
   const was = gpad.prev, pressed = k => now[k] && !was[k], released = k => !now[k] && was[k];
-  if (Object.keys(now).some(pressed)) setInputMode("pad");
+  if (PAD_KEYS.some(pressed)) setInputMode("pad");
 
   // held directions repeat in menus (first after a short wait, then steadily)
-  const dirs = [["up", 0, -1], ["down", 0, 1], ["left", -1, 0], ["right", 1, 0]];
-  const held = dirs.find(([k]) => now[k]);
+  const held = PAD_DIRS.find(([k]) => now[k]);
   let step = null;
   if (held) {
     const t = performance.now();
@@ -1869,7 +1874,7 @@ addEventListener("keyup", e => {
   if (e.code === "ArrowDown" || e.code === "KeyS") releaseSlide();
   if (e.code === "KeyC" || e.code === "ArrowLeft") setShield(false);
 });
-const screen = $("screen");
+const screen = $("screen"), knightBtns = $("knightBtns"), tbShield = $("tbShield"), tbSword = $("tbSword");
 setArea(areaIdx);
 let pointerSliding = false;
 screen.addEventListener("pointerdown", e => {
@@ -2175,7 +2180,7 @@ function tickCutscene(dt) {
   for (const f of c.fire) { f.x += f.vx * dt; f.y += f.vy * dt; f.t += dt; }
   c.fire = c.fire.filter(f => f.t < 40 && f.y < GROUND_Y - 4);
   for (const cf of confetti) { cf.y += cf.vy * dt; cf.t += dt; }
-  confetti = confetti.filter(cf => cf.y < H);
+  keep(confetti, cf => cf.y < H);
   // 7. after the dragon: into the Dragon's Lair
   if (T >= 370) {
     state = "play"; sundae = null; cut = null; confetti = []; dragonGone = true;
@@ -2197,7 +2202,7 @@ function tickFinish(dt) {
   if (endScene && Math.random() < 0.02 * dt) Sound.play("heart");
   if (endScene) { P.knight = false; if (Math.random() < 0.25 * dt) hearts.push({ x: endScene.x + 30 + Math.random() * 90, y: GROUND_Y - 40, vy: -0.5 - Math.random() * 0.4, t: 0 }); }
   for (const h of hearts) { h.y += h.vy * dt; h.t += dt; }
-  hearts = hearts.filter(h => h.t < 90);
+  keep(hearts, h => h.t < 90);
   const stopX = endScene ? endScene.x - 50 : sundae ? sundae.x - 44 : P.x;
   if (P.x < stopX) { P.x = Math.min(stopX, P.x + 2.2 * dt); P.ft += dt * 16.667; if (P.ft > 110) { P.ft = 0; P.frame = (P.frame + 1) % 4; } }
   P.y = P.x >= stopX ? -Math.abs(Math.sin(finishT / 8)) * 7 : 0;                         // happy hops
@@ -2208,7 +2213,7 @@ function tickFinish(dt) {
   }
   if (Math.random() < 0.6 * dt) confetti.push({ x: Math.random() * W, y: -4, vy: 0.6 + Math.random() * 0.8, c: SPRINKLE_COLORS[Math.floor(Math.random() * SPRINKLE_COLORS.length)], t: 0 });
   for (const c of confetti) { c.y += c.vy * dt; c.t += dt; }
-  confetti = confetti.filter(c => c.y < H);
+  keep(confetti, c => c.y < H);
   if (!finishShown && finishT > 35) {
     finishShown = true;
     const s = currentScore();
@@ -2238,29 +2243,31 @@ function finishTrip() {
 const pad = n => String(n).padStart(5, "0");
 function currentScore() { return frozen ? frozenScore : Math.floor(dist / 10); }
 const stageEl = $("stage"), stageName = $("stageName"), stageBar = $("stageBar"), stageFill = $("stageFill");
+// Touching the page costs more than drawing to the canvas, so these remember what they last wrote and skip it when nothing moved.
+const shown = { pct: -1, name: "", done: null, score: "", hi: "", frozen: null };
+function setStage(pct, name, done) {
+  if (pct !== shown.pct) { shown.pct = pct; stageFill.style.width = pct + "%"; stageBar.setAttribute("aria-valuenow", String(pct)); }
+  if (done !== shown.done) { shown.done = done; stageEl.classList.toggle("done", done); }
+  if (name !== shown.name) { shown.name = name; stageName.textContent = name; }
+}
 function updateStage() {
-  if (finale || state === "won" || state === "entering") {
-    stageFill.style.width = "100%"; stageEl.classList.add("done");
-    stageName.textContent = state === "won" || state === "entering" ? "Made it to the freezer" : "Climb to the freezer";
-    return;
-  }
+  if (finale || state === "won" || state === "entering") { setStage(100, state === "won" || state === "entering" ? "Made it to the freezer" : "Climb to the freezer", true); return; }
   if (state === "finished" || sundae || cut || endScene) {
-    stageFill.style.width = "100%"; stageEl.classList.add("done");
-    stageName.textContent = state === "finished" ? (endScene ? "Friends!" : "The end!") : cut ? (cut.saw ? "The giant sundae?!" : "The giant sundae") : endScene ? "The way out" : "The giant sundae";
+    setStage(100, state === "finished" ? (endScene ? "Friends!" : "The end!") : cut ? (cut.saw ? "The giant sundae?!" : "The giant sundae") : endScene ? "The way out" : "The giant sundae", true);
     return;
   }
   const pct = Math.min(100, Math.floor(((dist - areaStart) / AREA.length) * 100));
-  stageFill.style.width = pct + "%";
-  stageBar.setAttribute("aria-valuenow", String(pct));
   const done = pct >= 100;
-  stageEl.classList.toggle("done", done);
   const next = AREA_LIST[areaIdx + 1];
-  stageName.textContent = !done ? AREA.name : next ? `${AREA.name} cleared \u00b7 ${next.name} ahead` : `${AREA.name} cleared \u00b7 ${UPCOMING[0]} soon`;
+  setStage(pct, !done ? AREA.name : next ? `${AREA.name} cleared \u00b7 ${next.name} ahead` : `${AREA.name} cleared \u00b7 ${UPCOMING[0]} soon`, done);
 }
+const frozenTag = $("frozenTag");
 function updateHud() {
   updateStage();
-  scoreEl.textContent = pad(currentScore()); hiEl.textContent = "HI " + pad(hi);
-  $("frozenTag").hidden = !frozen; hud.classList.toggle("is-frozen", frozen);
+  const s = pad(currentScore()), h = "HI " + pad(hi);
+  if (s !== shown.score) { shown.score = s; scoreEl.textContent = s; }
+  if (h !== shown.hi) { shown.hi = h; hiEl.textContent = h; }
+  if (frozen !== shown.frozen) { shown.frozen = frozen; frozenTag.hidden = !frozen; hud.classList.toggle("is-frozen", frozen); }
 }
 
 // How busy the floor is: a gentle start in each new room, steady for the first 20%,
@@ -2280,7 +2287,7 @@ function scroll(dx) {
     o.x -= dx;
     if (isFlyer(o)) { const f = dx / Math.max(speed, 0.01); o.x -= o.vx * f; o.t = (o.t || 0) + f; }
   }
-  obstacles = obstacles.filter(o => o.x + o.w > -10);
+  keep(obstacles, o => o.x + o.w > -10);
   scenery.wall += dx * 0.45;     // furniture drifts by slower than the floor
   scenery.floor += dx;
   if (capeItem) capeItem.x -= dx;
@@ -2442,7 +2449,7 @@ function update(dt) {
     let shieldBox = gearBox(GEAR_BOXES.shield[shieldPoseKey()], p);
     if (shieldBox) { shieldBox[0] -= 4; shieldBox[2] += 4; }       // a little padding so a fast fireball can't slip past it
     const swinging = P.swingT < SWING_TIME, shielding = P.shield && !P.sliding;
-    obstacles = obstacles.filter(o => {
+    keep(obstacles, o => {
       const boxes = obstacleBoxes(o);
       if (swinging && o.breakable && boxes.some(b => hit(swordBox, b))) { shatter(o); return false; }
       if (shielding && shieldBox && o.kind === "fireball" && boxes.some(b => hit(shieldBox, b))) { puff(o.x, planeTopOf(o)); Sound.play("block", 1, sndAt(o.x)[1]); rumble(0.2, 0.45, 80); return false; }
@@ -2503,8 +2510,33 @@ function updateTrip(dt) {
 let LIGHTS = [], GLOWS = [];
 let glowRegion = [0, 480];                   // glows only show inside the room they belong to
 const STICKERS = [[236, 18], [262, 30], [300, 14], [338, 34], [372, 20], [640, 100], [668, 88]];
-function addGlow(fn) { const [a, b] = glowRegion; GLOWS.push(() => { ctx.save(); ctx.beginPath(); ctx.rect(a, 0, b - a, H); ctx.clip(); fn(); ctx.restore(); }); }
-function drawFurniture(ox) {
+let glowSink = null;                         // while a backdrop piece is being painted into its cache, its glows get painted here instead
+function addGlow(fn) {
+  if (glowSink) { paintInto(glowSink, fn); return; }
+  const [a, b] = glowRegion; GLOWS.push(() => { ctx.save(); ctx.beginPath(); ctx.rect(a, 0, b - a, H); ctx.clip(); fn(); ctx.restore(); });
+}
+function paintInto(target, fn) { const was = ctx; ctx = target; try { fn(); } finally { ctx = was; } }
+// The scrolling backdrop pieces (furniture, doors, cabinets, racks, tubs, lava cracks) never change, so each one is
+// painted once into an offscreen canvas, with its glows in a second one. After that it's two drawImage calls a frame
+// per piece instead of a few hundred little rects. The lights still get added every frame since some of them flicker.
+const SEG_PAD = 40;                          // room on either side in case a prop pokes past the edge of its piece
+const SEGS = {};
+function segment(name, period, paint) {
+  let s = SEGS[name];
+  if (!s) {
+    s = SEGS[name] = { base: makeTile(period + SEG_PAD * 2, H, () => {}), glow: makeTile(period + SEG_PAD * 2, H, () => {}) };
+    glowSink = s.glow.getContext("2d");
+    paintInto(s.base.getContext("2d"), () => paint(SEG_PAD));
+    glowSink = null;
+  }
+  return s;
+}
+function drawSegment(name, period, paint, ox) {
+  const s = segment(name, period, paint), [a, b] = glowRegion;
+  ctx.drawImage(s.base, ox - SEG_PAD, 0);
+  GLOWS.push(() => { ctx.save(); ctx.beginPath(); ctx.rect(a, 0, b - a, H); ctx.clip(); ctx.drawImage(s.glow, ox - SEG_PAD, 0); ctx.restore(); });
+}
+function paintFurniture(ox) {
   const g = GROUND_Y - 6;                     // top of the baseboard
   // window with the night sky and curtains
   drawProp("bg_window", ox + 28, 8);
@@ -2513,13 +2545,10 @@ function drawFurniture(ox) {
     rect(ox + 94, 22, 4, 7, "#1d2a55"); rect(ox + 96, 23, 3, 5, "#1d2a55");   // crescent
     rect(ox + 76, 18, 3, 13, "#e9e2d4");                                       // keep the window bar in front of the moon
   });
-  LIGHTS.push({ x: ox + 77, y: 46, r: 78, s: 0.55 });                 // moonlight through the window
-  LIGHTS.push({ x: ox + 118, y: GROUND_Y + 4, r: 60, s: 0.35 });      // moonlight patch on the floor
   // plug-in night lights on the baseboard
   for (const nx of [150, 560]) {
     drawProp("bg_nightlight", ox + nx, g - 9);
     addGlow(() => { rect(ox + nx + 1, g - 8, 5, 5, "#ffe6a0"); rect(ox + nx + 2, g - 7, 3, 3, "#fff6d6"); });
-    LIGHTS.push({ x: ox + nx + 3, y: g - 5, r: 58, s: 0.7, warm: true });
   }
   // glow-in-the-dark star stickers
   for (const [sx, sy] of STICKERS) addGlow(() => {
@@ -2529,6 +2558,13 @@ function drawFurniture(ox) {
   drawProp("bg_bed", ox + 170, 40);          // bed: tall wooden side with the quilt hanging over
   drawProp("bg_nightstand", ox + 470, 46);   // nightstand with a lamp
   drawProp("bg_poster", ox + 580, 24);       // ice cream poster
+}
+function drawFurniture(ox) {
+  drawSegment("furniture", 720, paintFurniture, ox);
+  const g = GROUND_Y - 6;
+  LIGHTS.push({ x: ox + 77, y: 46, r: 78, s: 0.55 });                 // moonlight through the window
+  LIGHTS.push({ x: ox + 118, y: GROUND_Y + 4, r: 60, s: 0.35 });      // moonlight patch on the floor
+  for (const nx of [150, 560]) LIGHTS.push({ x: ox + nx + 3, y: g - 5, r: 58, s: 0.7, warm: true });   // the night lights
 }
 
 function drawBedroom(off) {
@@ -2542,7 +2578,7 @@ function drawBedroom(off) {
 }
 
 // ---------- background tiles: shaded wall and floor textures, built once, then scrolled ----------
-function makeTile(w, h, paint) { const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d"); paint(x, w, h); return c; }
+function makeTile(w, h, paint) { const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d"); paintInto(x, () => paint(x, w, h)); return c; }
 function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 function px(x, X, Y, w, h, c) { x.fillStyle = c; x.fillRect(X, Y, w, h); }
 function shadeHex(hex, k) {                         // k > 0 lighter, k < 0 darker
@@ -2550,9 +2586,17 @@ function shadeHex(hex, k) {                         // k > 0 lighter, k < 0 dark
   const f = v => Math.max(0, Math.min(255, Math.round(k >= 0 ? v + (255 - v) * k : v * (1 + k))));
   return `rgb(${f(r)},${f(g)},${f(b)})`;
 }
+// Each tile gets a strip a screen-and-a-bit wide, painted once. Scrolling is then one drawImage instead of
+// twenty to sixty little ones (the ice bricks alone were sixty-six a frame).
+const STRIPS = new Map();
+function stripOf(tile) {
+  let s = STRIPS.get(tile);
+  if (!s) { const w = tile.width; s = makeTile(W + w, tile.height, x => { for (let X = 0; X < W + w; X += w) x.drawImage(tile, X, 0); }); STRIPS.set(tile, s); }
+  return s;
+}
 function tileAcross(tile, y, off, h) {               // repeat a tile across the screen, scrolled by off
-  const w = tile.width, start = -(((Math.round(off) % w) + w) % w);
-  for (let x = start; x < W; x += w) ctx.drawImage(tile, 0, 0, w, h ?? tile.height, x, y, w, h ?? tile.height);
+  const w = tile.width, start = -(((Math.round(off) % w) + w) % w), th = h ?? tile.height;
+  ctx.drawImage(stripOf(tile), 0, 0, W - start, th, start, y, W - start, th);
 }
 // wooden floor: three rows of planks, each plank its own shade, a light top edge, dark seams, a bit of grain and the odd knot
 function woodFloorTile(base) {
@@ -2643,6 +2687,23 @@ function buildTiles() {
       for (let s = 0; s < 4; s++) px(x, X + 2 + Math.floor(r() * (ww - 4)), Y + 2 + Math.floor(r() * (hh - 4)), 2, 1, "#33251f");
     }
   });
+  // the repeating trims that used to be drawn rect by rect every frame
+  TILE.panels = makeTile(40, 31, x => {                             // hallway wainscot panels: shadowed top-left bevel, lit bottom-right
+    px(x, 4, 0, 30, 1, "#cfd3c6"); px(x, 4, 0, 1, GROUND_Y - 112, "#cfd3c6");
+    px(x, 33, 1, 1, GROUND_Y - 113, "#fbfcf8"); px(x, 5, GROUND_Y - 112, 29, 1, "#fbfcf8");
+  });
+  TILE.upperTile = makeTile(14, 120, (x, w) => {                   // backsplash grout lines up the kitchen wall (only seen on the climb)
+    x.fillStyle = "#cdd8d3"; x.fillRect(0, 0, 1, 120); for (let y = 1; y < 120; y += 7) x.fillRect(0, y, w, 1);
+  });
+  TILE.speckle = makeTile(9, 3, x => { px(x, 2, 0, 1, 1, "#ddd6c8"); px(x, 6, 2, 1, 1, "#ddd6c8"); });   // counter edge speckles
+  TILE.drizzle = makeTile(90, 9, x => {                             // chocolate drips along the top of the ice cream section
+    for (let k = 0; k < 5; k++) { const X = k * 18, len = 4 + ((k * 18) % 5); px(x, X, 0, 4, len, "#6b3a22"); px(x, X + 1, 0, 1, len - 1, "#94573a"); px(x, X, len, 4, 1, "#4a2616"); px(x, X + 9, 0, 3, 2, "#6b3a22"); }
+  });
+  TILE.icicles = makeTile(66, 8, x => { for (let k = 0; k < 3; k++) { px(x, k * 22, 0, 3, 4 + (k % 3) * 2, "#e6f8ff"); px(x, k * 22 + 11, 0, 2, 3, "#e6f8ff"); } });   // frost icicles
+  TILE.teeth = makeTile(26, 10, x => { for (let r = 0; r < 10; r++) { px(x, 4 + Math.round(r / 2), r, 12 - r, 1, "#241812"); if (r < 8) px(x, 4 + Math.round(r / 2), r, 1, 1, "#3e2d26"); } });   // lair ceiling rocks
+  TILE.iceStreaks = makeTile(60, 6, x => { x.fillStyle = "rgba(255, 255, 255, 0.7)"; x.fillRect(8, 0, 18, 1); x.fillRect(34, 5, 10, 1); });
+  TILE.lavaLines = makeTile(70, 6, x => { px(x, 10, 0, 14, 1, "#ff7a1a"); px(x, 40, 5, 8, 1, "#ff7a1a"); });
+  TILE.sprinkleFloor = makeTile(144, 9, x => { for (let k = 0; k < 12; k++) px(x, k * 12 + 3, (k % 3) * 3, k % 2 ? 3 : 1, k % 2 ? 1 : 3, SPRINKLE_COLORS[k % SPRINKLE_COLORS.length]); });
   TILE.lairFloor = makeTile(70, 18, x => {
     const r = rng(31);
     px(x, 0, 0, 70, 18, "#2a1c16"); px(x, 0, 0, 70, 2, "#5e463a"); px(x, 0, 2, 70, 1, "#3e2d26");
@@ -2665,7 +2726,7 @@ function drawWoodFloor(base, seam, edge) {
 // Hallway: sage wall over white wainscoting, closed doors with light under them, framed pictures,
 // warm wall sconces, and a long runner rug down the middle of the floor.
 const HALL_PICTURES = [[230, 30, 34, 26, "#f2a7bd", "#7fb8d6"], [300, 40, 22, 30, "#f6c66b", "#3f8f6b"], [580, 28, 40, 30, "#7fb8d6", "#e9e2d4"]];
-function drawHallSegment(ox) {
+function paintHallSegment(ox) {
   const g = GROUND_Y - 6;
   // doors
   for (const dx of [60, 420]) {
@@ -2678,6 +2739,11 @@ function drawHallSegment(ox) {
   for (const sx of [190, 530]) {
     drawProp("bg_sconce", ox + sx - 5, 40);
     addGlow(() => { rect(ox + sx - 4, 41, 12, 10, "#ffe9b8"); rect(ox + sx - 2, 43, 8, 6, "#fff7e0"); });
+  }
+}
+function drawHallSegment(ox) {
+  drawSegment("hall", 760, paintHallSegment, ox);
+  for (const sx of [190, 530]) {              // the sconces flicker a little
     LIGHTS.push({ x: ox + sx + 2, y: 46, r: 92 + Math.sin(performance.now() / 130 + sx) * 2, s: 0.75 + Math.sin(performance.now() / 90 + sx) * 0.03, warm: true });
     LIGHTS.push({ x: ox + sx + 2, y: GROUND_Y + 2, r: 60, s: 0.4 });
   }
@@ -2686,11 +2752,7 @@ function drawHallway(off) {
   rect(0, 0, W, H, "#a9bfa8");                                  // sage wall
   rect(0, 92, W, GROUND_Y - 92, "#eef0ea");                     // wainscoting
   rect(0, 90, W, 2, "#f7f8f4"); rect(0, 92, W, 2, "#d9dccf"); rect(0, 94, W, 1, "rgba(60,70,50,0.18)");   // chair rail
-  const p = Math.round(off) % 40;
-  for (let x = -p; x < W; x += 40) {                              // panels with a shadowed top-left bevel and lit bottom-right
-    rect(x + 4, 100, 30, 1, "#cfd3c6"); rect(x + 4, 100, 1, GROUND_Y - 112, "#cfd3c6");
-    rect(x + 33, 101, 1, GROUND_Y - 113, "#fbfcf8"); rect(x + 5, GROUND_Y - 12, 29, 1, "#fbfcf8");
-  }
+  tileAcross(TILE.panels, 100, off);                              // wainscot panels
   const o = Math.round(off) % 760;
   drawHallSegment(-o); drawHallSegment(760 - o);
   drawBaseboard(GROUND_Y - 6, "#f7f4ef", "#ffffff", "#d8d2c6");
@@ -2701,7 +2763,7 @@ function drawHallway(off) {
 
 // Kitchen from Phill's height: towering lower cabinets, oven and dishwasher, counter edge high above,
 // a strip of backsplash tile, a dark toe-kick, and a checkered tile floor. It's bright because the light's on.
-function drawKitchenSegment(ox) {
+function paintKitchenSegment(ox) {
   const top = 30;
   drawProp("bg_cab118", ox, top); drawProp("bg_cab118", ox + 122, top);
   drawProp("bg_handle", ox + 104, 62); drawProp("bg_handle", ox + 133, 62);
@@ -2711,14 +2773,12 @@ function drawKitchenSegment(ox) {
   drawProp("bg_handle", ox + 630, 62); drawProp("bg_handle", ox + 665, 62);
   addGlow(() => { rect(ox + 470, top + 3, 6, 4, "#7dffb0"); });
 }
+function drawKitchenSegment(ox) { drawSegment("kitchen", 800, paintKitchenSegment, ox); }
 function drawKitchen(off) {
   rect(0, 0, W, H, "#f3efe6");
   if (camY > 0) {                                  // upper wall: backsplash continues up to the upper cabinets
     rect(0, -420, W, 420, "#e4ece8");
-    const tt = Math.round(off) % 14;
-    ctx.fillStyle = "#cdd8d3";
-    for (let x = -tt; x < W; x += 14) ctx.fillRect(x, -120, 1, 120);
-    for (let y = -119; y < 0; y += 7) ctx.fillRect(0, y, W, 1);
+    tileAcross(TILE.upperTile, -120, off);
     const uo = Math.round(off) % 160;
     for (let x = -uo; x < W; x += 160) drawProp("bg_upper", x, -420);
     rect(0, -122, W, 4, "#9fb39c");
@@ -2728,13 +2788,13 @@ function drawKitchen(off) {
   tileAcross(TILE.splash, 0, off);
   // counter edge: lit top, speckled stone face, shadow underneath
   rect(0, 20, W, 8, "#f6f3ec"); rect(0, 20, W, 1, "#ffffff"); rect(0, 26, W, 1, "#e2dccf"); rect(0, 27, W, 3, "#bdb5a6"); rect(0, 30, W, 1, "rgba(60,50,40,0.2)");
-  { const so = Math.round(off) % 9; ctx.fillStyle = "#ddd6c8"; for (let x = -so; x < W; x += 9) { ctx.fillRect(x + 2, 22, 1, 1); ctx.fillRect(x + 6, 24, 1, 1); } }
+  tileAcross(TILE.speckle, 22, off);                              // speckled stone
   const o = Math.round(off) % 800;
   drawKitchenSegment(-o); drawKitchenSegment(800 - o);
   rect(0, GROUND_Y - 8, W, 8, "#4a3d35"); rect(0, GROUND_Y - 8, W, 1, "#2f2621"); rect(0, GROUND_Y - 7, W, 1, "#5a4b42");   // toe kick
   tileAcross(TILE.checker, GROUND_Y, scenery.floor);              // beveled checkered floor
   rect(0, GROUND_Y, W, 1, "#2a3238");
-  { const gl = ctx.createLinearGradient(0, GROUND_Y, 0, H); gl.addColorStop(0, "rgba(255,255,255,0.08)"); gl.addColorStop(1, "rgba(0,0,0,0.1)"); ctx.fillStyle = gl; ctx.fillRect(0, GROUND_Y + 1, W, H - GROUND_Y); }
+  ctx.fillStyle = GRADS.kitchenFloor(); ctx.fillRect(0, GROUND_Y + 1, W, H - GROUND_Y);
 }
 
 // Inside the freezer: frosty ice-brick walls, wire racks of frozen food, frost and little icicles
@@ -2742,7 +2802,7 @@ function drawKitchen(off) {
 const FREEZER_GOODS = [[30, "#4fae5a", 22, 10], [80, "#d9473f", 30, 6], [150, "#5aa0d8", 18, 12], [260, "#f2c14e", 26, 14],
                        [340, "#4fae5a", 22, 10], [430, "#d9473f", 30, 6], [520, "#e8ecf0", 24, 9], [640, "#f2c14e", 26, 14], [760, "#5aa0d8", 18, 12]];
 const CRYSTALS = [[110, 120], [300, 64], [470, 118], [610, 70], [820, 116]];
-function drawFreezerSegment(ox, deep) {
+function paintFreezerSegment(ox) {
   for (const sy of [46, 96]) {                     // wire racks
     rect(ox, sy, 900, 2, "#9fb9c9"); rect(ox, sy + 2, 900, 1, "#e6f4fa");
     for (let x = 0; x < 900; x += 10) rect(ox + x, sy - 30, 1, 30, "rgba(159, 185, 201, 0.22)");
@@ -2754,19 +2814,25 @@ function drawFreezerSegment(ox, deep) {
       rect(ox + cx - 2, cy - 4, 2, 2, "#e8fdff"); rect(ox + cx + 3, cy + 1, 2, 2, "#e8fdff"); rect(ox + cx + 1, cy - 1, 1, 1, "#ffffff");
     };
     addGlow(glow);
-    LIGHTS.push({ x: ox + cx + 1, y: cy, r: 54 + deep * 30, s: 0.45 + deep * 0.4 });
   }
+}
+function drawFreezerSegment(ox, deep) {
+  drawSegment("freezer", 900, paintFreezerSegment, ox);
+  for (const [cx, cy] of CRYSTALS) LIGHTS.push({ x: ox + cx + 1, y: cy, r: 54 + deep * 30, s: 0.45 + deep * 0.4 });   // brighter the deeper he goes
 }
 // The ice cream section: strawberry wall with vanilla swirls, giant ice cream tubs, chocolate drizzle
 // along the top, a vanilla floor scattered with sprinkles, and warm sugar-crystal glows.
 const TUBS = [[40, 140, "#f4a6bf", "#fff3d6"], [230, 120, "#7a4a30", "#f6e7cf"], [400, 150, "#a8e6c4", "#ffffff"], [610, 130, "#fff3d6", "#f4a6bf"], [790, 100, "#f4a6bf", "#7a4a30"]];
-function drawCreamSegment(ox, deep) {
-  for (const [tx, tw, body, label] of TUBS) {
-    const top = 40, bot = GROUND_Y - 4;
-    drawProp("bg_tub" + TUBS.findIndex(tb => tb[0] === tx), ox + tx, top);
-    LIGHTS.push({ x: ox + tx + tw / 2, y: top + 44, r: 60 + deep * 30, s: 0.35 + deep * 0.35, warm: true });
+function paintCreamSegment(ox) {
+  TUBS.forEach(([tx, tw], i) => {
+    const top = 40;
+    drawProp("bg_tub" + i, ox + tx, top);
     addGlow(() => { rect(ox + tx + tw / 2 - 3, top + 40, 6, 6, "#ffe6f0"); rect(ox + tx + tw / 2 - 1, top + 38, 2, 10, "#ffffff"); });
-  }
+  });
+}
+function drawCreamSegment(ox, deep) {
+  drawSegment("cream", 900, paintCreamSegment, ox);
+  for (const [tx, tw] of TUBS) LIGHTS.push({ x: ox + tx + tw / 2, y: 84, r: 60 + deep * 30, s: 0.35 + deep * 0.35, warm: true });   // sugar-crystal glow on each tub
 }
 function drawCreamSection(off, deep) {
   if (!TILE) buildTiles();
@@ -2774,14 +2840,10 @@ function drawCreamSection(off, deep) {
   const o = Math.round(off) % 900;
   drawCreamSegment(-o, deep); drawCreamSegment(900 - o, deep);
   rect(0, 0, W, 6, "#6b3a22");                                                   // chocolate drizzle along the top
-  const d = Math.round(off) % 18;
-  for (let x = -d; x < W; x += 18) { const len = 4 + ((x + d) % 5); rect(x, 6, 4, len, "#6b3a22"); rect(x + 1, 6, 1, len - 1, "#94573a"); rect(x, 6 + len, 4, 1, "#4a2616"); rect(x + 9, 6, 3, 2, "#6b3a22"); }
+  tileAcross(TILE.drizzle, 6, off);
   rect(0, 0, W, 1, "#94573a");
   rect(0, GROUND_Y, W, H - GROUND_Y, "#f7ead2"); rect(0, GROUND_Y, W, 2, "#fff8ea"); rect(0, GROUND_Y + 2, W, 1, "#e0cda8");
-  const fo = Math.round(scenery.floor) % 48;
-  for (let x = -fo, k = 0; x < W; x += 12, k++) {
-    rect(x + 3, GROUND_Y + 5 + (k % 3) * 3, k % 2 ? 3 : 1, k % 2 ? 1 : 3, SPRINKLE_COLORS[k % SPRINKLE_COLORS.length]);
-  }
+  tileAcross(TILE.sprinkleFloor, GROUND_Y + 5, scenery.floor);                  // sprinkles scattered on the floor
 }
 function drawIceArch(x) {
   // frozen archway column between the ice level and the ice cream section
@@ -2810,51 +2872,48 @@ function drawIceSection(off, deep) {
   const o = Math.round(off) % 900;
   drawFreezerSegment(-o, deep); drawFreezerSegment(900 - o, deep);
   rect(0, 0, W, 5, "#f4fbff");                     // frost along the top, little icicles
-  const io = Math.round(off) % 22;
-  for (let x = -io; x < W; x += 22) { rect(x, 5, 3, 4 + ((x + io) % 3) * 2, "#e6f8ff"); rect(x + 11, 5, 2, 3, "#e6f8ff"); }
+  tileAcross(TILE.icicles, 5, off);
   // slick ice floor
   rect(0, GROUND_Y, W, H - GROUND_Y, "#a6d6ec"); rect(0, GROUND_Y, W, 2, "#e6f8ff"); rect(0, GROUND_Y + 2, W, 1, "#7fb7d3");
-  { const gl = ctx.createLinearGradient(0, GROUND_Y + 3, 0, H); gl.addColorStop(0, "rgba(255,255,255,0.18)"); gl.addColorStop(1, "rgba(60,120,160,0.12)"); ctx.fillStyle = gl; ctx.fillRect(0, GROUND_Y + 3, W, H - GROUND_Y - 3); }
-  const fo = Math.round(scenery.floor) % 60;
-  ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-  for (let x = -fo; x < W; x += 60) { ctx.fillRect(x + 8, GROUND_Y + 6, 18, 1); ctx.fillRect(x + 34, GROUND_Y + 11, 10, 1); }
+  ctx.fillStyle = GRADS.iceFloor(); ctx.fillRect(0, GROUND_Y + 3, W, H - GROUND_Y - 3);
+  tileAcross(TILE.iceStreaks, GROUND_Y + 6, scenery.floor);       // shiny streaks on the ice
 }
 
 // Dragon's Lair: dark volcanic rock, glowing lava cracks, rocky teeth along the top,
 // and the dragon's hoard (gold coins and gems) heaped in the background.
 const LAIR_CRACKS = [[60, 40, 30], [180, 90, 22], [300, 52, 40], [430, 100, 26], [560, 36, 34], [700, 84, 28], [800, 60, 20]];
 const HOARD = [[120, 46], [520, 60]];
-function drawLairSegment(ox) {
+function paintLairSegment(ox) {
   for (const [cx, cy, len] of LAIR_CRACKS) {
     for (let i = 0; i < len; i++) rect(ox + cx + i, cy + Math.round(Math.sin(i * 0.5) * 3), 1, 2, "#ff7a1a");
-    LIGHTS.push({ x: ox + cx + len / 2, y: cy, r: 50, s: 0.45 + 0.15 * (0.5 + 0.5 * Math.sin(performance.now() / 600 + cx)), warm: true });
     addGlow(() => { for (let i = 0; i < len; i += 2) rect(ox + cx + i, cy + Math.round(Math.sin(i * 0.5) * 3), 1, 1, "#ffd25a"); });
   }
-  HOARD.forEach(([hx, hw], i) => {                // the dragon's hoard, piled on a rock ledge at the back
-    drawProp("bg_hoard" + i, ox + hx - 12, GROUND_Y - 78);
-    LIGHTS.push({ x: ox + hx + hw / 2, y: GROUND_Y - 60, r: 50, s: 0.4, warm: true });
-  });
+  HOARD.forEach(([hx], i) => drawProp("bg_hoard" + i, ox + hx - 12, GROUND_Y - 78));   // the dragon's hoard, piled on a rock ledge at the back
+}
+function drawLairSegment(ox) {
+  drawSegment("lair", 860, paintLairSegment, ox);
+  for (const [cx, cy, len] of LAIR_CRACKS) LIGHTS.push({ x: ox + cx + len / 2, y: cy, r: 50, s: 0.45 + 0.15 * (0.5 + 0.5 * Math.sin(performance.now() / 600 + cx)), warm: true });   // the cracks pulse
+  for (const [hx, hw] of HOARD) LIGHTS.push({ x: ox + hx + hw / 2, y: GROUND_Y - 60, r: 50, s: 0.4, warm: true });
 }
 function drawLair(off) {
   if (!TILE) buildTiles();
   for (let y = 0; y < GROUND_Y; y += 32) tileAcross(TILE.rock, y, off, Math.min(32, GROUND_Y - y));   // rough rock blocks
   const o = Math.round(off) % 860;
   drawLairSegment(-o); drawLairSegment(860 - o);
-  const to = Math.round(off) % 26;                 // rocky teeth along the top
-  for (let x = -to; x < W; x += 26) { for (let r = 0; r < 10; r++) { rect(x + 4 + Math.round(r / 2), r, 12 - r, 1, "#241812"); if (r < 8) rect(x + 4 + Math.round(r / 2), r, 1, 1, "#3e2d26"); } }
+  tileAcross(TILE.teeth, 0, off);                  // rocky teeth along the top
   tileAcross(TILE.lairFloor, GROUND_Y, scenery.floor);            // gritty rock floor
-  const fo = Math.round(scenery.floor) % 70;
-  for (let x = -fo; x < W; x += 70) { rect(x + 10, GROUND_Y + 6, 14, 1, "#ff7a1a"); rect(x + 40, GROUND_Y + 11, 8, 1, "#ff7a1a"); }
+  tileAcross(TILE.lavaLines, GROUND_Y + 6, scenery.floor);        // lava showing through cracks in the floor
 }
 
 // little bits of life in each room: twinkling stars, a flickering sconce, drifting freezer mist,
 // snow, dripping chocolate, rising embers in the lair
 const REDUCED = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+const TWINKLES = [[50, 24, 0], [70, 40, 1.7], [98, 56, 3.1], [62, 62, 4.4], [104, 30, 5.2]];   // stars in the bedroom window
 function tickAmbient(area, off) {
   const now = performance.now();
   if (area.id === "bedroom") {
     const o = Math.round(off) % 720;
-    for (const base of [-o, 720 - o]) for (const [sx, sy, ph] of [[50, 24, 0], [70, 40, 1.7], [98, 56, 3.1], [62, 62, 4.4], [104, 30, 5.2]]) {
+    for (const base of [-o, 720 - o]) for (const [sx, sy, ph] of TWINKLES) {
       const k = Math.sin(now / 420 + ph);
       if (k > 0.55) addGlow(() => { rect(base + sx, sy, 1, 1, "#ffffff"); if (k > 0.85) { rect(base + sx - 1, sy, 3, 1, "rgba(255,255,255,0.6)"); rect(base + sx, sy - 1, 1, 3, "rgba(255,255,255,0.6)"); } });
     }
@@ -2869,14 +2928,17 @@ function tickAmbient(area, off) {
   if (area.id === "lair" && Math.random() < 0.18) spawn({ k: "ember", x: Math.random() * W, y: GROUND_Y + 2, vx: -0.2 - Math.random() * 0.4, vy: -0.4 - Math.random() * 0.6, t: 0 });
 }
 function drawAmbient() {
+  const drift = state === "play" ? speed * worldK * 0.15 : 0;
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  for (const a of ambient) if (a.k === "snow") { a.x += a.vx - drift; a.y += a.vy; a.t += 1; ctx.fillRect(Math.round(a.x), Math.round(a.y), 1, 1); }   // all the snow in one color
   for (const a of ambient) {
-    a.x += a.vx - (state === "play" ? speed * worldK * 0.15 : 0); a.y += a.vy; a.t += 1;
-    if (a.k === "snow") rect(Math.round(a.x), Math.round(a.y), 1, 1, "rgba(255,255,255,0.85)");
-    else if (a.k === "mist") { ctx.fillStyle = `rgba(240, 250, 255, ${0.1 * Math.sin(Math.min(1, a.t / 60) * Math.PI / 2)})`; ctx.fillRect(Math.round(a.x), Math.round(a.y), Math.round(a.w), 3); ctx.fillRect(Math.round(a.x + 6), Math.round(a.y - 2), Math.round(a.w * 0.6), 2); }
+    if (a.k === "snow") continue;
+    a.x += a.vx - drift; a.y += a.vy; a.t += 1;
+    if (a.k === "mist") { ctx.fillStyle = `rgba(240, 250, 255, ${0.1 * Math.sin(Math.min(1, a.t / 60) * Math.PI / 2)})`; ctx.fillRect(Math.round(a.x), Math.round(a.y), Math.round(a.w), 3); ctx.fillRect(Math.round(a.x + 6), Math.round(a.y - 2), Math.round(a.w * 0.6), 2); }
     else if (a.k === "drip") { a.vy += 0.06; rect(Math.round(a.x), Math.round(a.y), 2, 3, "#6b3a22"); rect(Math.round(a.x), Math.round(a.y), 1, 1, "#94573a"); }
     else if (a.k === "ember") { const fl = (a.t >> 2) % 2; rect(Math.round(a.x), Math.round(a.y), 1, 1, fl ? "#ffd25a" : "#ff8a2a"); }
   }
-  ambient = ambient.filter(a => a.t < 400 && a.y < GROUND_Y + 4 && a.y > -10 && a.x > -90 && (a.k !== "ember" || a.t < 140));
+  keep(ambient, a => a.t < 400 && a.y < GROUND_Y + 4 && a.y > -10 && a.x > -90 && (a.k !== "ember" || a.t < 140));
 }
 
 function drawRoomIn(area, x0, x1) {
@@ -2886,8 +2948,9 @@ function drawRoomIn(area, x0, x1) {
   ctx.save(); ctx.beginPath(); ctx.rect(x0, -2000, x1 - x0, H + 4000); ctx.clip();
   area.draw(scenery.wall);
   ctx.restore();
-  const mine = LIGHTS.splice(before);
-  for (const l of mine) if (l.x >= x0 - 30 && l.x <= x1 + 30) LIGHTS.push(l);
+  let j = before;                                                     // keep only the lights inside this slice
+  for (let i = before; i < LIGHTS.length; i++) { const l = LIGHTS[i]; if (l.x >= x0 - 30 && l.x <= x1 + 30) LIGHTS[j++] = l; }
+  LIGHTS.length = j;
 }
 
 function drawCutscene() {
@@ -2952,29 +3015,58 @@ function drawBackground() {
   tickAmbient(AREA, scenery.wall);
 }
 
+// Gradients that never move get built once and kept. The sprinkle halo and the cape glow are built around (0, 0)
+// and the canvas is shifted to where they're needed.
+const GRADS = {
+  _: {},
+  make(name, fn) { return this._[name] || (this._[name] = fn()); },
+  kitchenFloor() { return this.make("kitchenFloor", () => { const g = mainCtx.createLinearGradient(0, GROUND_Y, 0, H); g.addColorStop(0, "rgba(255,255,255,0.08)"); g.addColorStop(1, "rgba(0,0,0,0.1)"); return g; }); },
+  iceFloor() { return this.make("iceFloor", () => { const g = mainCtx.createLinearGradient(0, GROUND_Y + 3, 0, H); g.addColorStop(0, "rgba(255,255,255,0.18)"); g.addColorStop(1, "rgba(60,120,160,0.12)"); return g; }); },
+  iceWater() { return this.make("iceWater", () => { const g = mainCtx.createLinearGradient(0, GROUND_Y + 3, 0, H); g.addColorStop(0, "#2f6f96"); g.addColorStop(1, "#103049"); return g; }); },
+  chasm() { return this.make("chasm", () => { const g = mainCtx.createLinearGradient(0, GROUND_Y, 0, H); g.addColorStop(0, "#0b0706"); g.addColorStop(0.45, "#140806"); g.addColorStop(1, "#a8360e"); return g; }); },
+  halo() { return this.make("halo", () => { const g = mainCtx.createRadialGradient(0, 0, 1, 0, 0, 10); g.addColorStop(0, "rgba(70, 30, 45, 0.32)"); g.addColorStop(1, "rgba(70, 30, 45, 0)"); return g; }); },
+  capeGlow() { return this.make("capeGlow", () => { const g = mainCtx.createRadialGradient(0, 0, 2, 0, 0, 22); g.addColorStop(0, "rgba(255, 236, 160, 0.5)"); g.addColorStop(1, "rgba(255, 236, 160, 0)"); return g; }); },
+};
+// One soft round light, painted once, then stretched to each light's size. Stretching a picture is far cheaper
+// than building a fresh gradient for every light every frame (the lair has twenty-odd of them).
+const SPOT_R = 128;
+const lightSpot = makeTile(SPOT_R * 2, SPOT_R * 2, (x, w, h) => { const g = x.createRadialGradient(SPOT_R, SPOT_R, 0, SPOT_R, SPOT_R, SPOT_R); g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); });
+const warmSpot = makeTile(SPOT_R * 2, SPOT_R * 2, (x, w, h) => { const g = x.createRadialGradient(SPOT_R, SPOT_R, 0, SPOT_R, SPOT_R, SPOT_R); g.addColorStop(0, "rgba(255, 196, 110, 1)"); g.addColorStop(1, "rgba(255, 196, 110, 0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); });
 const shade = document.createElement("canvas");
 shade.width = W; shade.height = H;
 const sctx = shade.getContext("2d");
-function applyDarkness(alpha) {
-  if (alpha <= 0) return;
+// The dark layer is built once a frame: full dark, then every light punches a soft hole in it. Both darkness passes
+// then just draw that layer at their own strength, which comes out the same as building it twice.
+let shadeFrame = -1;
+function buildShade() {
+  if (shadeFrame === frameNo) return;
+  shadeFrame = frameNo;
   sctx.globalCompositeOperation = "source-over";
-  sctx.clearRect(0, 0, W, H);
-  sctx.fillStyle = `rgba(10, 16, 44, ${alpha})`;
+  sctx.globalAlpha = 1;
+  sctx.fillStyle = "#0a102c";
   sctx.fillRect(0, 0, W, H);
   sctx.globalCompositeOperation = "destination-out";
   for (const l of LIGHTS) {
     if (l.x < -l.r || l.x > W + l.r) continue;
-    const gr = sctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.r);
-    gr.addColorStop(0, `rgba(0,0,0,${l.s})`); gr.addColorStop(1, "rgba(0,0,0,0)");
-    sctx.fillStyle = gr; sctx.fillRect(l.x - l.r, l.y - l.r, l.r * 2, l.r * 2);
+    sctx.globalAlpha = l.s;
+    sctx.drawImage(lightSpot, l.x - l.r, l.y - l.r, l.r * 2, l.r * 2);
   }
+  sctx.globalAlpha = 1;
+}
+function applyDarkness(alpha) {
+  if (alpha <= 0) return;
+  buildShade();
+  ctx.globalAlpha = alpha;
   ctx.drawImage(shade, 0, 0);
+  ctx.imageSmoothingEnabled = true;           // the stretched light needs smoothing or it goes blocky
+  ctx.globalAlpha = 0.16;
   for (const l of LIGHTS) {                   // faint warm tint from the night lights
     if (!l.warm || l.x < -l.r || l.x > W + l.r) continue;
-    const gr = ctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.r * 0.8);
-    gr.addColorStop(0, "rgba(255, 196, 110, 0.16)"); gr.addColorStop(1, "rgba(255, 196, 110, 0)");
-    ctx.fillStyle = gr; ctx.fillRect(l.x - l.r, l.y - l.r, l.r * 2, l.r * 2);
+    const r = l.r * 0.8;
+    ctx.drawImage(warmSpot, l.x - r, l.y - r, r * 2, r * 2);
   }
+  ctx.globalAlpha = 1;
+  ctx.imageSmoothingEnabled = false;
 }
 
 // with the cape on, every frame has a cape version (cape_ + name)
@@ -2986,9 +3078,7 @@ function capeBox(c) { return [c.x - 2, CAPE_Y + capeBob(c) - 4, 22, 22]; }   // 
 function drawCapeItem(c) {
   // Phill's red cape floating in the air, rippling and twinkling so you notice it
   const X = Math.round(c.x), Y = CAPE_Y + capeBob(c), tw = Math.floor(performance.now() / 160) % 4;
-  const glow = ctx.createRadialGradient(X + 9, Y + 6, 2, X + 9, Y + 6, 22);
-  glow.addColorStop(0, "rgba(255, 236, 160, 0.5)"); glow.addColorStop(1, "rgba(255, 236, 160, 0)");
-  ctx.fillStyle = glow; ctx.fillRect(X - 14, Y - 16, 46, 44);
+  ctx.save(); ctx.translate(X + 9, Y + 6); ctx.fillStyle = GRADS.capeGlow(); ctx.fillRect(-23, -22, 46, 44); ctx.restore();
   drawProp(Math.floor(c.t / 10) % 2 ? "cape1" : "cape0", X, Y);
   const sp = [[-5, -4], [21, -2], [9, -9], [24, 12], [-4, 14]];
   ctx.fillStyle = "#fff6c8";
@@ -2997,7 +3087,7 @@ function drawCapeItem(c) {
 function drawSparkles() {
   ctx.fillStyle = "#fff3b0";
   for (const s of sparkles) { if (Math.floor(s.t / 3) % 2 === 0) { ctx.fillRect(s.x, s.y - 1, 1, 3); ctx.fillRect(s.x - 1, s.y, 3, 1); } s.t += 1; s.y -= 0.3; }
-  sparkles = sparkles.filter(s => s.t < 50);
+  keep(sparkles, s => s.t < 50);
 }
 
 function drawStep(s) {
@@ -3006,23 +3096,37 @@ function drawStep(s) {
   drawProp("step_" + s.kind, s.x, GROUND_Y - s.top);
 }
 function drawRamp(r) {
-  // wooden cutting board leaning from the trash can lid up onto the counter
-  const g = GROUND_Y, x0 = Math.round(r.x0), x1 = Math.round(r.x1);
-  for (let x = x0; x <= x1 + 4; x++) {
-    const yTop = Math.round(g - rampHeight(r, x));
-    rect(x, yTop - 1, 1, 6, INK);
+  // wooden cutting board leaning from the trash can lid up onto the counter. Its shape never changes, so it's
+  // painted once (a few hundred one-pixel rects) and then just slides along.
+  if (!r.pic) {
+    const len = Math.round(r.x1 - r.x0), top = Math.max(r.from, r.to) + 2, bot = Math.min(r.from, r.to) - 8;
+    const h = x => r.from + (r.to - r.from) * Math.max(0, Math.min(1, x / len));
+    r.pic = makeTile(len + 6, top - bot + 1, () => {
+      for (let x = 0; x <= len + 4; x++) rect(x, top - h(x) - 1, 1, 6, INK);
+      for (let x = 1; x <= len + 3; x++) { const y = top - h(x); rect(x, y, 1, 4, "#d8a868"); rect(x, y, 1, 1, "#ecc58c"); rect(x, y + 3, 1, 1, "#b88648"); }
+      rect(len - 10, top - h(len - 10) + 1, 4, 2, "#7a5236");           // handle hole
+    });
+    r.picTop = top;
   }
-  for (let x = x0 + 1; x <= x1 + 3; x++) {
-    const yTop = Math.round(g - rampHeight(r, x));
-    rect(x, yTop, 1, 4, "#d8a868"); rect(x, yTop, 1, 1, "#ecc58c"); rect(x, yTop + 3, 1, 1, "#b88648");
-  }
-  const hx = x1 - 10, hy = Math.round(g - rampHeight(r, hx));
-  rect(hx, hy + 1, 4, 2, "#7a5236");                                   // handle hole
+  ctx.drawImage(r.pic, Math.round(r.x0), GROUND_Y - r.picTop);
 }
+let fridgePic = null;
 function drawFridge(x) {
   // Tall fridge. The freezer door on top is swung halfway open: you can see inside (frosty shelves,
   // ice cream tubs), cold mist spills out, and the frosty bottom edge of the opening is the last ledge.
+  // The fridge itself is painted once, only the mist moves.
   const L = Math.round(x) - 10, g = GROUND_Y, now = performance.now();
+  const lip = g - 218, inW = 160;
+  if (!fridgePic) fridgePic = makeTile(500, 448, () => paintFridge(170, 448));
+  ctx.drawImage(fridgePic, L - 170, g - 448);
+  ctx.fillStyle = "rgba(240, 250, 255, 0.55)";
+  for (let k = 0; k < 7; k++) {
+    const p = ((now / 30) + k * 43) % 160;
+    const mx = L + 10 + ((k * 23) % (inW - 20)) - p * 0.35, my = lip + p * 0.5;
+    ctx.fillRect(Math.round(mx), Math.round(my), 8 - (p / 32 | 0), 3);
+  }
+}
+function paintFridge(L, g) {
   const top = g - 392, lip = g - 218, inW = 160;
   rect(L - 8, g - 404, 290, 404, "#9aa3ad"); rect(L - 5, g - 401, 284, 398, "#d6dbe0");
   rect(L - 2, lip + 6, 278, g - lip - 9, "#dfe4e8"); rect(L + 250, lip + 30, 6, 90, "#b9c0c8");   // fridge door + handle
@@ -3049,16 +3153,11 @@ function drawFridge(x) {
   const glow = ctx.createRadialGradient(L + inW / 2, lip - 60, 10, L + inW / 2, lip - 60, 170);
   glow.addColorStop(0, "rgba(180, 230, 255, 0.28)"); glow.addColorStop(1, "rgba(180, 230, 255, 0)");
   ctx.fillStyle = glow; ctx.fillRect(L - 170, lip - 230, inW + 340, 340);
-  ctx.fillStyle = "rgba(240, 250, 255, 0.55)";
-  for (let k = 0; k < 7; k++) {
-    const p = ((now / 30) + k * 43) % 160;
-    const mx = L + 10 + ((k * 23) % (inW - 20)) - p * 0.35, my = lip + p * 0.5;
-    ctx.fillRect(Math.round(mx), Math.round(my), 8 - (p / 32 | 0), 3);
-  }
 }
 
 function draw() {
   if (loaded < names.length) return;
+  if (!warmed) warmUp();
   ctx.save(); ctx.translate(0, Math.round(camY));      // the camera rises with Phill during the climb
   if (shake > 0) { ctx.translate(Math.round((Math.random() - 0.5) * shake * 0.6), Math.round((Math.random() - 0.5) * shake * 0.4)); shake = Math.max(0, shake - 0.6); }
   drawBackground();
@@ -3075,9 +3174,10 @@ function draw() {
   }
   if (cut) for (const f of cut.fire) if (f.t % 3 < 1) LIGHTS.push({ x: f.x, y: f.y, r: 22, s: 0.3, warm: true });
   const darkness = currentDarkness();
-  screen.classList.toggle("night", darkness >= 0.3);
-  $("knightBtns").hidden = !(P.knight && state === "play");
-  $("tbShield").hidden = $("tbSword").hidden = !P.knight;
+  const night = darkness >= 0.3, kb = !(P.knight && state === "play"), tb = !P.knight;
+  if (night !== shown.night) { shown.night = night; screen.classList.toggle("night", night); }
+  if (kb !== shown.kb) { shown.kb = kb; knightBtns.hidden = kb; }
+  if (tb !== shown.tb) { shown.tb = tb; tbShield.hidden = tbSword.hidden = tb; }
   applyDarkness(darkness * 0.75);            // the room goes dark first
   for (const g of GLOWS) g();                 // moon, night lights, stickers glow behind the clutter
   drawAmbient();
@@ -3135,7 +3235,7 @@ function draw() {
   if (fading) ctx.restore();
   if (cut) drawCutscene();
   for (const s of shards) { s.x += s.vx; s.y += s.vy; s.vy += 0.2; s.t += 1; rect(Math.round(s.x), Math.round(s.y), 2, 2, s.c); }
-  shards = shards.filter(s => s.t < 40);
+  keep(shards, s => s.t < 40);
   for (const h of hearts) { const X = Math.round(h.x), Y = Math.round(h.y); rect(X, Y, 2, 2, "#ff6b8b"); rect(X + 3, Y, 2, 2, "#ff6b8b"); rect(X, Y + 1, 5, 2, "#ff6b8b"); rect(X + 1, Y + 3, 3, 1, "#ff6b8b"); rect(X + 2, Y + 4, 1, 1, "#ff6b8b"); }
   if (P.onIce && P.onGround && state === "play") {           // little skate streaks behind his feet
     ctx.fillStyle = "rgba(255,255,255,0.8)"; const pp = phillDrawPos();
@@ -3147,7 +3247,7 @@ function draw() {
     ctx.fillStyle = d.splash ? `rgba(${d.t % 4 < 2 ? "220, 244, 255" : "120, 190, 230"}, ${a})` : `rgba(${dustColor()}, ${a})`;
     ctx.fillRect(Math.round(d.x), Math.round(d.y) - sz, sz, sz);
   }
-  dust = dust.filter(d => d.t < d.life);
+  keep(dust, d => d.t < d.life);
   drawSparkles();
   for (const c of confetti) rect(Math.round(c.x), Math.round(c.y), (c.t | 0) % 6 < 3 ? 3 : 1, (c.t | 0) % 6 < 3 ? 1 : 3, c.c);
   applyDarkness(darkness * 0.4);             // then everything, lightly, so Phill and the clutter stay readable
@@ -3167,10 +3267,15 @@ function draw() {
 let last = performance.now(), paused = false;
 function loop(now) {
   const dt = Math.min(3, (now - last) / 16.667);
-  last = now;
+  last = now; frameNo++;
   if (!paused && !userPaused) {
     if (state === "play" || state === "trip" || state === "down" || state === "cutscene") runFrames += dt;
-    if (state === "play") update(dt); else if (state === "trip") updateTrip(dt); else if (state === "won" || state === "entering") tickWin(dt);
+    if (state === "play") {
+      // A late frame (the browser hiccuped, a tab switch, a slow phone) gets split into normal-sized steps instead of
+      // one big one, so Phill moves exactly like he would have on a smooth run and nothing can jump into him.
+      const steps = dt > 1.5 ? Math.ceil(dt) : 1, sdt = dt / steps;
+      for (let i = 0; i < steps && state === "play"; i++) update(sdt);
+    } else if (state === "trip") updateTrip(dt); else if (state === "won" || state === "entering") tickWin(dt);
     else if (state === "finished") tickFinish(dt);
     else if (state === "cutscene") { tickCutscene(dt); tickEyes(dt); }
     else if (state === "tutorial") { tickTutorial(dt); tickEyes(dt); }
@@ -3187,6 +3292,23 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === "play" && !userPaused) togglePause();   // switched tabs: pause so he doesn't trip while you're away
 });
 
+// Everything that would otherwise get built the first time it's needed (tiles, strips, the backdrop pieces, the
+// light sprite) gets built here instead, and every sprite is drawn once so the browser has it ready. That moves all
+// the first-time costs to before the title screen, where a hitch can't trip anyone.
+let warmed = false;
+function warmUp() {
+  if (warmed || loaded < names.length) return;
+  warmed = true;
+  if (!TILE) buildTiles();
+  for (const k in TILE) stripOf(TILE[k]);
+  segment("furniture", 720, paintFurniture); segment("hall", 760, paintHallSegment); segment("kitchen", 800, paintKitchenSegment);
+  segment("freezer", 900, paintFreezerSegment); segment("cream", 900, paintCreamSegment); segment("lair", 860, paintLairSegment);
+  for (const k of ["kitchenFloor", "iceFloor", "iceWater", "chasm", "halo", "capeGlow"]) GRADS[k]();
+  ctx.save(); ctx.globalAlpha = 0.01;
+  for (const n of names) ctx.drawImage(imgs[n], 0, 0);
+  ctx.drawImage(lightSpot, 0, 0, 40, 40); ctx.drawImage(warmSpot, 0, 0, 40, 40); ctx.drawImage(shade, 0, 0);
+  ctx.restore(); ctx.clearRect(0, 0, W, H);
+}
 function boot(data) {
   const saved = parseInt(store("phill-hi") || "0", 10);
   hi = Math.max(isNaN(saved) ? 0 : saved, (data && data.hi) || 0);
