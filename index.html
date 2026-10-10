@@ -2045,7 +2045,9 @@ function setOverlay(title, sub, actions) {
 }
 function start() {
   userPaused = false; $("pauseBtn").setAttribute("aria-pressed", "false");
-  reset(); state = "play"; overlay.hidden = true; updateHud(); runFrames = 0; runTrips = 0;
+  reset(); state = "play"; overlay.hidden = true; runFrames = 0; runTrips = 0;
+  overlay.classList.remove("title"); $("ovLogo").hidden = true; $("screen").classList.remove("is-title");   // leaving the title screen brings the stage bar back
+  updateHud();
   if (COARSE) { try { document.getElementById("screen").scrollIntoView({ block: "start", behavior: "smooth" }); } catch (_) {} }
   if (AREA.id === "lair" && !startLairEnd) startTutorial("lair");   // starting straight in the lair: explain the gear first
 }
@@ -2540,9 +2542,10 @@ function paintFurniture(ox) {
   const g = GROUND_Y - 6;                     // top of the baseboard
   // window with the night sky and curtains
   drawProp("bg_window", ox + 28, 8);
-  addGlow(() => {                             // moon stays bright through the darkness
-    rect(ox + 91, 22, 6, 9, "#f4f1d8"); rect(ox + 90, 23, 8, 7, "#f4f1d8"); rect(ox + 89, 24, 10, 5, "#f4f1d8");
-    rect(ox + 94, 22, 4, 7, "#1d2a55"); rect(ox + 96, 23, 3, 5, "#1d2a55");   // crescent
+  addGlow(() => {                             // moon stays bright through the darkness: a crescent, horns to the right, same top and bottom
+    rect(ox + 94, 22, 3, 1, "#f4f1d8"); rect(ox + 93, 23, 3, 1, "#f4f1d8"); rect(ox + 92, 24, 4, 1, "#f4f1d8");
+    rect(ox + 92, 25, 3, 4, "#f4f1d8");
+    rect(ox + 92, 29, 4, 1, "#f4f1d8"); rect(ox + 93, 30, 3, 1, "#f4f1d8"); rect(ox + 94, 31, 3, 1, "#f4f1d8");
     rect(ox + 76, 18, 3, 13, "#e9e2d4");                                       // keep the window bar in front of the moon
   });
   // plug-in night lights on the baseboard
