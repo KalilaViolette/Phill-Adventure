@@ -143,6 +143,47 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 3 / 1; image-r
 .ov-actions button.ghost { background: #f4fbf8; color: #1d3a2a; }
 .ov-actions kbd { font-size: 0.7rem; background: rgba(255,255,255,0.25); border-color: rgba(29,58,42,0.4); color: inherit; }
 .ov-actions button:focus-visible { outline: 3px solid #1d3a2a; outline-offset: 2px; }
+/* the pause menu: a 2-column grid you can move around with the D-pad or arrow keys */
+.screen .overlay.pause {
+  inset: 6% 12% 7% 12%; background: rgba(24, 16, 12, 0.88); border: 2px solid #f2c14e; border-radius: 8px;
+  padding: 8px 18px; color: #fff6e0; text-shadow: none; gap: 6px; align-content: center;
+}
+.screen .overlay.pause strong { font-size: clamp(0.95rem, 3vw, 1.6rem); color: #ffd25a; }
+.screen .overlay.pause > span { color: #fff6e0; font-size: clamp(0.6rem, 1.5vw, 0.8rem); opacity: 0.85; }
+.ov-actions.menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; width: min(24rem, 100%); justify-self: center; }
+.ov-actions.menu button { justify-content: center; padding-block: 4px; font-size: clamp(0.65rem, 1.8vw, 0.9rem); white-space: nowrap; }
+.ov-actions.menu button.ghost { background: #3a2a1e; color: #fff6e0; border-color: #6d5130; }
+.ov-actions .vol-item b, #pmRumble b { font-weight: 700; color: #ffd25a; }
+.ov-actions button.pad-focus { outline: 3px solid #ffd25a; outline-offset: 2px; box-shadow: 0 0 0 6px rgba(255, 210, 90, 0.25); }
+.ov-actions .vol-item.pad-focus b::before { content: "\25C0  "; font-size: 0.7em; }
+.ov-actions .vol-item.pad-focus b::after { content: "  \25B6"; font-size: 0.7em; }
+.overlay.how-open #ovTitle, .overlay.how-open #ovSub, .overlay.how-open .ov-actions button:not(#howBtn) { display: none; }
+.overlay.how-open .ov-actions { order: 2; display: flex; }
+.overlay.how-open .ov-how { order: 1; }
+.ov-start { display: inline-flex; align-items: center; justify-content: center; gap: 8px; pointer-events: auto; justify-self: center; margin-top: 2px; }
+.ov-start span { font-size: clamp(0.65rem, 1.8vw, 0.9rem); }
+.ov-start b { color: #ffc7d6; }
+.ov-start button {
+  font: 700 clamp(0.6rem, 1.6vw, 0.8rem) var(--font-display); line-height: 1; color: #1d3a2a; background: #f4fbf8;
+  border: 2px solid #1d3a2a; border-radius: 4px; padding: 3px 6px; cursor: pointer;
+}
+.screen.night .ov-start button { color: #f4f7ff; background: rgba(255, 255, 255, 0.12); border-color: #c9d4f2; }
+.ov-how i { font-style: normal; font-weight: 700; color: #ffd25a; }
+/* full screen: just the game (and the touch buttons), as big as fits */
+.fs-only { display: none !important; }
+body.can-fs .fs-only { display: revert !important; }
+body.can-fs .toggles .fs-only { display: inline-block !important; }
+body.can-fs:not(.coarse) .keys .fs-only { display: flex !important; }
+body.is-fs { padding: 0; overflow: hidden; background: #0f1714; }
+body.is-fs .wrap {
+  max-width: none; width: 100vw; height: 100vh; height: 100dvh; margin: 0; padding: 12px; box-sizing: border-box;
+  background: #0f1714; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+}
+body.is-fs .wrap > :not(.screen):not(.touch-bar) { display: none !important; }
+body.is-fs .screen, body.is-fs .touch-bar { width: min(100%, calc((100vh - 24px) * 3)); width: min(100%, calc((100dvh - 24px) * 3)); flex: none; }
+body.is-fs.show-touch .screen, body.is-fs.show-touch .touch-bar { width: min(100%, calc((100vh - 106px) * 3)); width: min(100%, calc((100dvh - 106px) * 3)); }
+body.is-fs .screen { box-shadow: none; }
+body.is-fs.show-touch .touch-bar { margin-top: 0; }
 .hud .frozen {
   font-size: 0.7em; align-self: center; color: #ffffff; background: #4a9cc4; border-radius: 3px;
   padding: 1px 5px; letter-spacing: 0.06em;
@@ -240,19 +281,29 @@ kbd {
       <strong id="ovTitle">Press Space or tap to start</strong>
       <span id="ovSub">Hold jump for a bigger hop</span>
       <span id="ovHint" class="ov-hint" hidden></span>
+      <div class="ov-start" id="ovStart" hidden>
+        <button type="button" id="osPrev" aria-label="Previous start spot">&#9664;</button>
+        <span>Start in <b id="osName">Bedroom</b></span>
+        <button type="button" id="osNext" aria-label="Next start spot">&#9654;</button>
+      </div>
       <div class="ov-actions" id="ovActions" hidden>
-        <button type="button" id="resumeBtn">Resume <kbd>Space</kbd></button>
-        <button type="button" id="restartBtn" class="ghost">Start over <kbd>R</kbd></button>
+        <button type="button" id="resumeBtn">Resume <kbd id="resumeKbd">Space</kbd></button>
+        <button type="button" id="restartBtn" class="ghost">Start over <kbd id="restartKbd">R</kbd></button>
         <button type="button" id="howBtn" class="ghost" hidden>How to play</button>
+        <button type="button" id="pmFull" class="ghost pm-only" hidden>Full screen</button>
+        <button type="button" id="pmMusic" class="ghost pm-only vol-item" data-vol="music" hidden>Music <b></b></button>
+        <button type="button" id="pmSfx" class="ghost pm-only vol-item" data-vol="sfx" hidden>Sound <b></b></button>
+        <button type="button" id="pmRumble" class="ghost pm-only" hidden>Rumble <b></b></button>
       </div>
       <div class="ov-how" id="ovHow" hidden>
         <span class="kbd-only"><b>Jump</b> Space / &uarr; &middot; hold to jump higher</span>
         <span class="kbd-only"><b>Slide</b> &darr; &middot; in the air: drop fast, then slide</span>
         <span class="touch-only"><b>Jump / Slide</b> the buttons under the game &middot; hold Jump to jump higher</span>
-        <span class="pad-line" hidden><b>Controller</b> A jump &middot; B slide &middot; Start pause</span>
+        <span class="pad-line" hidden><b>Controller</b> <i data-pb="south">A</i> jump &middot; <i data-pb="east">B</i> slide &middot; <i data-pb="start">Start</i> pause</span>
         <span data-unlock-line="kitchenCape"><b>Glide</b> keep holding jump while he falls</span>
         <span data-unlock-line="lair" class="kbd-only"><b>Sword</b> X / &rarr; &middot; <b>Shield</b> hold C / &larr;</span>
         <span data-unlock-line="lair" class="touch-only"><b>Sword / Shield</b> the buttons under the game</span>
+        <span data-unlock-line="lair" class="pad-line" hidden><b>Sword</b> <i data-pb="west">X</i> / <i data-pb="rb">RB</i> &middot; <b>Shield</b> hold <i data-pb="north">Y</i> / <i data-pb="lb">LB</i></span>
       </div>
     </div>
   </div>
@@ -272,11 +323,12 @@ kbd {
       <li data-unlock-line="kitchenCape">With the cape: keep holding jump while falling to glide</li>
       <li class="kbd-only"><kbd>&darr;</kbd> slide (in the air: drop, then slide)</li>
       <li>Touch: use the Jump and Slide buttons under the game (or tap the game to jump)</li>
-      <li class="pad-line" hidden>Controller: <kbd>A</kbd> jump &middot; <kbd>B</kbd> or down slide &middot; <kbd>Start</kbd> pause &middot; <kbd>Back</kbd> start over</li>
-      <li class="pad-line pad-lair" hidden data-unlock-line="lair">Controller in the lair: <kbd>X</kbd> or <kbd>RB</kbd> sword, hold <kbd>Y</kbd> or <kbd>LB</kbd> shield</li>
+      <li class="pad-line" hidden>Controller: <kbd data-pb="south">A</kbd> jump &middot; <kbd data-pb="east">B</kbd> or down slide &middot; <kbd data-pb="start">Start</kbd> pause &middot; <kbd data-pb="back">Back</kbd> start over</li>
+      <li class="pad-line pad-lair" hidden data-unlock-line="lair">Controller in the lair: <kbd data-pb="west">X</kbd> or <kbd data-pb="rb">RB</kbd> sword, hold <kbd data-pb="north">Y</kbd> or <kbd data-pb="lb">LB</kbd> shield</li>
       <li class="kbd-only"><kbd>R</kbd> start over</li>
       <li class="kbd-only"><kbd>P</kbd> pause</li>
       <li class="kbd-only"><kbd>M</kbd> mute</li>
+      <li class="kbd-only fs-only"><kbd>F</kbd> full screen</li>
       <li id="lairKeys" class="kbd-only" data-unlock-line="lair">In the Dragon's Lair: <kbd>X</kbd><kbd>&rarr;</kbd> wooden sword (cuts cobwebs and crystal walls), hold <kbd>C</kbd><kbd>&larr;</kbd> wooden shield (blocks fire)</li>
     </ul>
     <div class="toggles" role="group" aria-label="Start in" id="startRow">
@@ -297,6 +349,7 @@ kbd {
       <button type="button" id="musicBtn" aria-pressed="true">Music</button>
       <button type="button" id="sfxBtn" aria-pressed="true">Sound</button>
       <button type="button" id="touchBtn" aria-pressed="false">Touch buttons</button>
+      <button type="button" id="fsBtn" class="fs-only" aria-pressed="false">Full screen</button>
       <label class="vol" for="musicVol">Music volume <input type="range" id="musicVol" min="0" max="100" step="5"></label>
       <label class="vol" for="sfxVol">Sound volume <input type="range" id="sfxVol" min="0" max="100" step="5"></label>
       <button type="button" id="boxBtn" class="dev-only" aria-pressed="false">Show hitboxes</button>
@@ -328,6 +381,20 @@ const cv = document.getElementById("game");
 const ctx = cv.getContext("2d");
 ctx.imageSmoothingEnabled = false;
 
+// which input you used last, so prompts say "Press A" with a controller and "Press Space" on a keyboard
+let inputMode = "kbd";            // kbd | pad
+let padType = "xbox";             // xbox | ps | nin, picked from the controller's name
+const PAD_NAMES = {
+  xbox: { south: "A", east: "B", west: "X", north: "Y", lb: "LB", rb: "RB", start: "Start", back: "Back" },
+  ps: { south: "Cross", east: "Circle", west: "Square", north: "Triangle", lb: "L1", rb: "R1", start: "Options", back: "Create" },
+  nin: { south: "B", east: "A", west: "Y", north: "X", lb: "L", rb: "R", start: "+", back: "\u2212" },
+};
+const PB = k => PAD_NAMES[padType][k];
+const gpad = { prev: {}, connected: false, index: -1, repeatAt: 0, repeatDir: "" };
+const gmenu = { el: null };         // the menu button the controller / arrow keys have highlighted
+let pickQuiet = false;              // the title screen's Start in picker changes the spot without starting the run
+let rumbleOn = (() => { try { return localStorage.getItem("phill-rumble") !== "0"; } catch (_) { return true; } })();
+
 const imgs = {};
 let loaded = 0;
 const names = Object.keys(SPR);
@@ -352,6 +419,7 @@ function syncUnlocks() {
     b.classList.toggle("locked", !open); if (open) shown++;
   }
   for (const el of document.querySelectorAll("[data-unlock-line]")) el.hidden = !(devMode || unlocked.has(el.dataset.unlockLine));
+  try { syncStartChooser(); } catch (_) {}
   for (const el of document.querySelectorAll(".pad-line")) {   // controller lines: only once a controller shows up (and the lair one still waits for the lair)
     const open = el.dataset.unlockLine ? (devMode || unlocked.has(el.dataset.unlockLine)) : true;
     el.hidden = !(el.dataset.pad && open);
@@ -479,16 +547,22 @@ const TUTORIALS = {
     COARSE ? "Keep holding Jump while he's falling and he'll glide. Glide over the wide spills ahead."
            : "Keep holding jump while he's falling and he'll glide. Glide over the wide spills ahead."],
   lair: () => ["The Dragon's Lair",
-    COARSE ? "Tap Sword to cut through cobwebs and crystal walls. Hold Shield to block fireballs and fire vents."
+    inputMode === "pad" ? `Press ${PB("west")} or ${PB("rb")} to swing your wooden sword and cut through cobwebs and crystal walls. Hold ${PB("north")} or ${PB("lb")} to raise your shield and block fireballs and fire vents.`
+    : COARSE ? "Tap Sword to cut through cobwebs and crystal walls. Hold Shield to block fireballs and fire vents."
            : "Press X or \u2192 to swing your wooden sword and cut through cobwebs and crystal walls. Hold C or \u2190 to raise your shield and block fireballs and fire vents."],
 };
+function continueText() { return inputMode === "pad" ? `Press ${PB("south")} to continue` : COARSE ? "Tap to continue" : "Press Space to continue"; }
+function jumpText() { return inputMode === "pad" ? `Press ${PB("south")} to jump` : COARSE ? "Tap Jump" : "Press Space to jump"; }
+function pauseText() { return inputMode === "pad" ? `Press ${PB("start")} or ${PB("east")} to keep going` : COARSE ? "Tap Resume to keep going" : "Press P or Space to keep going"; }
+function againText() { return inputMode === "pad" ? `Press ${PB("south")}` : COARSE ? "Tap" : "Press R"; }
+function startText() { return inputMode === "pad" ? `Press ${PB("south")} to start` : COARSE ? "Tap to start" : "Press Space to start"; }
 function startTutorial(kind) {
   state = "tutorial"; tutorial = { kind, t: 0 };
   holdJump = false; fastFall = false; P.shield = false;
   const [title, body] = TUTORIALS[kind]();
-  setOverlay(title, body, false);
+  setOverlay(title, body, false); $("toast").hidden = true;
   overlay.classList.add("tutorial");
-  $("ovHint").textContent = COARSE ? "Tap to continue" : "Press Space to continue"; $("ovHint").hidden = false;
+  $("ovHint").textContent = continueText(); $("ovHint").hidden = false;
 }
 function endTutorial() {
   if (!tutorial || tutorial.t < 24) return;      // a short beat so a held key doesn't skip it
@@ -560,8 +634,9 @@ const trip = { t: 0, hang: 0, landed: false, landT: 0, speedAtHit: 0 };
 
 function showTitle() {
   // the title card: logo, a blinking "start" prompt, and your best score
-  setOverlay(COARSE ? "Tap to start" : "Press Space to start", hi > 0 ? `Best score ${String(hi).padStart(5, "0")}` : "Hold jump for a bigger hop", false);
+  setOverlay(startText(), hi > 0 ? `Best score ${String(hi).padStart(5, "0")}` : "Hold jump for a bigger hop", false);
   overlay.classList.add("title"); $("ovLogo").hidden = false; $("screen").classList.add("is-title");
+  syncStartChooser();
 }
 function setArea(i) {
   areaIdx = i; AREA = AREA_LIST[i];
@@ -1303,6 +1378,7 @@ const Sound = (() => {
     resetProgress: () => { seq(["C6", "G5", "E5", "C5"], "pulse25", 0.1, 0.07, sfxBus); osc("triangle", 260, now() + 0.28, 0.4, 0.16, sfxBus, { f1: 90 }); },
     holdOpen: () => osc("pulse12", 520, now(), 0.12, 0.08, sfxBus, { f1: 780 }),
     ui: () => osc("pulse12", 880, now(), 0.05, 0.06, sfxBus),
+    tick: () => osc("pulse12", 1320, now(), 0.025, 0.035, sfxBus),
     slip: (v = 1) => { noise(now(), 0.3, 0.14 * v, sfxBus, { type: "bandpass", f0: 1200, f1: 400, q: 2 }); osc("sine", 300, now(), 0.25, 0.08 * v, sfxBus, { f1: 900, slide: 0.2 }); },
     // objects (positional)
     boing: (v, pan, hi = false) => osc("triangle", hi ? 420 : 260, now(), 0.18, 0.18 * v, sfxBus, { f1: hi ? 900 : 560, slide: 0.12, pan }),
@@ -1494,25 +1570,217 @@ function audioTick(dt) {
 }
 
 // ---------- controller ----------
-// Standard layout (Xbox / PlayStation / Switch Pro through the browser): A jump, B or down slide, X or RB sword,
-// hold Y or LB shield, Start pause, Back start over. A also starts, resumes and closes the how-to cards.
-const gpad = { prev: {}, connected: false };
+// Standard layout (Xbox / PlayStation / Switch Pro through the browser): bottom button jumps, right button slides,
+// left button or right bumper swings the sword, top button or left bumper holds the shield, Start pauses, Back starts over.
+// In menus the D-pad (or left stick) moves the highlight, the bottom button picks it, the right button goes back.
 function padDown(gp, i) { const b = gp.buttons[i]; return !!b && (b.pressed || b.value > 0.5); }
+function padKind(id) {
+  if (/xbox|xinput|045e/i.test(id)) return "xbox";                       // newer Xbox pads are also called "Wireless Controller"
+  if (/054c|playstation|dualsense|dualshock|wireless controller/i.test(id)) return "ps";
+  if (/057e|nintendo|switch|pro controller|joy-con/i.test(id)) return "nin";
+  return "xbox";
+}
+function currentPad() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()] : [];
+  return pads.find(p => p && p.connected && p.index === gpad.index) || pads.find(p => p && p.connected) || null;
+}
+function padCanRumble() { const gp = gpad.connected && currentPad(); return !!(gp && gp.vibrationActuator); }
+function rumble(strong, weak, ms) {
+  if (!rumbleOn || inputMode !== "pad" || !gpad.connected) return;
+  const va = currentPad()?.vibrationActuator; if (!va) return;
+  try { const p = va.playEffect("dual-rumble", { startDelay: 0, duration: ms, strongMagnitude: strong, weakMagnitude: weak }); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+}
+function setInputMode(m) {
+  if (m === inputMode) return;
+  inputMode = m; refreshPrompts();
+}
+// redo whatever prompt is on screen right now so it names the right buttons
+function refreshPrompts() {
+  for (const el of document.querySelectorAll("[data-pb]")) el.textContent = PB(el.dataset.pb);
+  $("resumeKbd").textContent = inputMode === "pad" ? PB("start") : "Space";
+  $("restartKbd").textContent = inputMode === "pad" ? PB("back") : "R";
+  if (state === "ready" && !overlay.hidden && overlay.classList.contains("title")) showTitle();
+  else if (state === "tutorial" && tutorial) { $("ovSub").textContent = TUTORIALS[tutorial.kind]()[1]; $("ovHint").textContent = continueText(); }
+  else if (userPaused) $("ovSub").textContent = pauseText();
+  else if (state === "finished" && finishShown) {
+    const cr = overlay.querySelector(".ov-credits");
+    if (cr) cr.textContent = cr.textContent.replace(/(Press \S+|Tap) to play again/, `${againText()} to play again`);
+    else $("ovSub").textContent = $("ovSub").textContent.replace(/(Press \S+|Tap) to play again/, `${againText()} to play again`);
+  }
+  if (capeItem && capeItem.waiting) showToast(jumpText(), "", true);
+}
+
+// ---- menus ----
+function menuItems() {
+  if (!$("resetConfirm").hidden) return [$("resetKeep"), $("resetYes")];
+  if (overlay.hidden || $("ovActions").hidden) return [];
+  if (!userPaused && state !== "down") return [];
+  return [...$("ovActions").querySelectorAll("button")].filter(b => !b.hidden && b.offsetParent !== null);
+}
+function clearMenuFocus() { if (gmenu.el) gmenu.el.classList.remove("pad-focus"); gmenu.el = null; }
+function setMenuFocus(el) {
+  if (!el) return;
+  clearMenuFocus(); gmenu.el = el;
+  if (el.closest(".ov-actions")) el.classList.add("pad-focus");
+  try { el.focus({ preventScroll: true }); } catch (_) {}
+}
+function menuMove(dx, dy) {
+  const items = menuItems(); if (!items.length) return;
+  const cur = items.includes(gmenu.el) ? gmenu.el : items.includes(document.activeElement) ? document.activeElement : null;
+  if (!cur) { setMenuFocus(items[0]); Sound.play("tick"); return; }
+  if (dx && cur.dataset.vol) { nudgeVolume(cur.dataset.vol, dx); return; }
+  // pick the closest button in that direction (works for the 2-column pause grid and the plain rows alike)
+  const a = cur.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+  let best = null, bestScore = Infinity;
+  for (const el of items) {
+    if (el === cur) continue;
+    const r = el.getBoundingClientRect(), x = r.left + r.width / 2 - ax, y = r.top + r.height / 2 - ay;
+    const along = dx ? x * dx : y * dy, across = dx ? Math.abs(y) : Math.abs(x);
+    if (along <= 4) continue;
+    const score = along + across * 2.5;
+    if (score < bestScore) { bestScore = score; best = el; }
+  }
+  if (!best && dy) best = dy > 0 ? items[0] : items[items.length - 1];   // wrap around top and bottom
+  if (best && best !== cur) { setMenuFocus(best); Sound.play("tick"); }
+}
+function menuBack() {
+  if (!$("resetConfirm").hidden) { Sound.play("ui"); closeResetConfirm(); return; }
+  if (overlay.classList.contains("how-open")) { toggleHow(false); return; }
+  if (userPaused) togglePause();
+}
+function syncMenuLabels() {
+  const pct = (on, lvl) => on ? `${Math.round(lvl * 100)}%` : "off";
+  $("pmMusic").querySelector("b").textContent = pct(Sound.musicOn, Sound.musicLevel);
+  $("pmSfx").querySelector("b").textContent = pct(Sound.sfxOn, Sound.sfxLevel);
+  $("pmRumble").querySelector("b").textContent = rumbleOn ? "on" : "off";
+  const fs = isFullscreen();
+  $("pmFull").textContent = fs ? "Exit full screen" : "Full screen";
+  $("fsBtn").textContent = fs ? "Exit full screen" : "Full screen"; $("fsBtn").setAttribute("aria-pressed", String(fs));
+}
+function nudgeVolume(which, dx) {
+  Sound.init();
+  const music = which === "music";
+  const lvl = Math.max(0, Math.min(1, Math.round(((music ? Sound.musicLevel : Sound.sfxLevel) + dx * 0.1) * 10) / 10));
+  if (music) { Sound.setMusicLevel(lvl); if (!Sound.musicOn && dx > 0) Sound.setMusic(true); $("musicVol").value = String(Math.round(lvl * 100)); }
+  else { Sound.setSfxLevel(lvl); if (!Sound.sfxOn && dx > 0) Sound.setSfx(true); $("sfxVol").value = String(Math.round(lvl * 100)); }
+  syncSoundButtons(); Sound.play(music ? "tick" : "point");
+}
+$("pmMusic").addEventListener("click", () => { Sound.init(); Sound.setMusic(!Sound.musicOn); syncSoundButtons(); Sound.play("ui"); });
+$("pmSfx").addEventListener("click", () => { Sound.init(); Sound.setSfx(!Sound.sfxOn); syncSoundButtons(); Sound.play("ui"); });
+$("pmRumble").addEventListener("click", () => {
+  rumbleOn = !rumbleOn; try { localStorage.setItem("phill-rumble", rumbleOn ? "1" : "0"); } catch (_) {}
+  syncMenuLabels(); Sound.play("ui"); rumble(0.3, 0.6, 160);
+});
+$("pmFull").addEventListener("click", () => toggleFullscreen());
+
+// ---- Start in picker on the title screen ----
+function startSpots() { return [...document.querySelectorAll("#startRow [data-unlock]")].filter(b => !b.classList.contains("locked")); }
+function titleChooserOpen() { return state === "ready" && !overlay.hidden && overlay.classList.contains("title") && startSpots().length > 1; }
+function syncStartChooser() {
+  const spots = startSpots(), cur = spots.find(b => b.getAttribute("aria-pressed") === "true") || spots[0];
+  $("ovStart").hidden = !(state === "ready" && spots.length > 1);
+  if (cur) $("osName").textContent = cur.textContent;
+}
+function cycleStart(d) {
+  const spots = startSpots(); if (spots.length < 2) return;
+  let i = spots.findIndex(b => b.getAttribute("aria-pressed") === "true");
+  i = ((i < 0 ? 0 : i) + d + spots.length) % spots.length;
+  pickQuiet = true; try { spots[i].click(); } finally { pickQuiet = false; }   // picks it without starting the run
+  Sound.play("tick");
+}
+$("osPrev").addEventListener("click", () => cycleStart(-1));
+$("osNext").addEventListener("click", () => cycleStart(1));
+
+// ---- full screen ----
+const FS_OK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+document.body.classList.toggle("can-fs", FS_OK);
+function isFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function toggleFullscreen() {
+  if (!FS_OK) return;
+  const el = document.querySelector(".wrap");
+  const failed = () => showToast("Full screen didn't open", inputMode === "pad" ? "Some browsers only allow it from a click or a key. Press F, or use the button under the game." : "");
+  try {
+    if (isFullscreen()) { const p = (document.exitFullscreen || document.webkitExitFullscreen).call(document); if (p && p.catch) p.catch(() => {}); }
+    else { const p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: "hide" }); if (p && p.catch) p.catch(failed); }
+  } catch (_) { failed(); }
+  Sound.play("ui");
+}
+function syncFullscreen() {
+  const on = isFullscreen();
+  document.body.classList.toggle("is-fs", on); syncMenuLabels();
+  if (on && COARSE) { try { window.screen.orientation.lock("landscape").catch(() => {}); } catch (_) {} }   // phones: turn sideways for you if the browser allows it
+  if (!on && state === "play" && !userPaused) togglePause();                                                  // backed out of full screen mid-run: pause
+}
+document.addEventListener("fullscreenchange", syncFullscreen);
+document.addEventListener("webkitfullscreenchange", syncFullscreen);
+$("fsBtn").addEventListener("click", () => toggleFullscreen());
+
+// ---- reading the controller every frame ----
 function pollPad() {
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  const gp = [...pads].find(p => p && p.connected);
-  if (!gp) { if (gpad.connected) { gpad.connected = false; releaseJump(); releaseSlide(); setShield(false); } return; }
-  if (!gpad.connected) { gpad.connected = true; Sound.init(); showToast("Controller connected", "A to jump, B to slide"); document.querySelectorAll(".pad-line").forEach(el => { el.dataset.pad = "1"; }); syncUnlocks(); }
-  const ax = gp.axes || [];
+  const gp = currentPad();
+  if (!gp) {
+    if (gpad.connected) {
+      gpad.connected = false; gpad.prev = {}; releaseJump(); releaseSlide(); setShield(false);
+      const wasRunning = state === "play" && !userPaused;
+      if (wasRunning) togglePause();                            // controller died mid-run: pause instead of letting him trip
+      showToast("Controller disconnected", wasRunning ? "Paused for you" : "");
+      if (inputMode === "pad") setInputMode("kbd");
+    }
+    return;
+  }
+  if (!gpad.connected) {
+    gpad.connected = true; gpad.index = gp.index; padType = padKind(gp.id); inputMode = "pad";
+    Sound.init(); showToast("Controller connected", `${PB("south")} to jump, ${PB("east")} to slide`);
+    document.querySelectorAll(".pad-line").forEach(el => { el.dataset.pad = "1"; }); syncUnlocks(); refreshPrompts();
+    if (userPaused) { $("pmRumble").hidden = !padCanRumble(); if (!gmenu.el) setMenuFocus(menuItems()[0]); }
+  }
+  const ax = gp.axes || [], sx = ax[0] ?? 0, sy = ax[1] ?? 0;
   const now = {
-    jump: padDown(gp, 0) || padDown(gp, 12) || (ax[1] ?? 0) < -0.6,
-    slide: padDown(gp, 1) || padDown(gp, 13) || (ax[1] ?? 0) > 0.6,
+    jump: padDown(gp, 0) || padDown(gp, 12) || sy < -0.6,
+    slide: padDown(gp, 1) || padDown(gp, 13) || sy > 0.6,
     sword: padDown(gp, 2) || padDown(gp, 5) || padDown(gp, 7),
     shield: padDown(gp, 3) || padDown(gp, 4) || padDown(gp, 6),
     start: padDown(gp, 9), back: padDown(gp, 8),
+    a: padDown(gp, 0), b: padDown(gp, 1),
+    up: padDown(gp, 12) || sy < -0.5, down: padDown(gp, 13) || sy > 0.5,
+    left: padDown(gp, 14) || sx < -0.5, right: padDown(gp, 15) || sx > 0.5,
   };
   const was = gpad.prev, pressed = k => now[k] && !was[k], released = k => !now[k] && was[k];
-  if (!document.getElementById("resetConfirm").hidden) { gpad.prev = now; return; }
+  if (Object.keys(now).some(pressed)) setInputMode("pad");
+
+  // held directions repeat in menus (first after a short wait, then steadily)
+  const dirs = [["up", 0, -1], ["down", 0, 1], ["left", -1, 0], ["right", 1, 0]];
+  const held = dirs.find(([k]) => now[k]);
+  let step = null;
+  if (held) {
+    const t = performance.now();
+    if (gpad.repeatDir !== held[0]) { gpad.repeatDir = held[0]; gpad.repeatAt = t + 380; step = held; }
+    else if (t >= gpad.repeatAt) { gpad.repeatAt = t + 130; step = held; }
+  } else gpad.repeatDir = "";
+
+  // the reset card: move between the two buttons, hold the bottom button on "Hold to reset"
+  if (!$("resetConfirm").hidden) {
+    if (step && step[1]) setMenuFocus(document.activeElement === $("resetKeep") ? $("resetYes") : $("resetKeep"));
+    if (pressed("a")) { if (document.activeElement === $("resetYes")) resetYesHold.begin(); else $("resetKeep").click(); }
+    if (released("a")) resetYesHold.stop();
+    if (pressed("b")) menuBack();
+    gpad.prev = now; return;
+  }
+  // pause menu and the tripped card
+  if (menuItems().length) {
+    if (step) menuMove(step[1], step[2]);
+    if (pressed("a") && !(state === "down" && performance.now() - downAt < 350)) {
+      const items = menuItems(), el = items.includes(gmenu.el) ? gmenu.el : items[0];
+      if (el) el.click();
+    }
+    if (pressed("b")) menuBack();
+    if (pressed("start")) { if (userPaused) togglePause(); else pressJump(); }
+    if (pressed("back")) { Sound.play("startOver"); start(); }
+    gpad.prev = now; return;
+  }
+  // title screen: left / right picks where to start
+  if (titleChooserOpen() && step && step[1]) cycleStart(step[1]);
+
   if (pressed("start")) { if (state === "play" || state === "trip" || userPaused) togglePause(); else pressJump(); }
   if (pressed("back") && (state !== "trip" || userPaused)) { Sound.play("startOver"); start(); }
   if (pressed("jump")) pressJump();
@@ -1524,7 +1792,7 @@ function pollPad() {
   if (released("shield")) setShield(false);
   gpad.prev = now;
 }
-addEventListener("gamepaddisconnected", () => { if (!navigator.getGamepads || ![...navigator.getGamepads()].some(p => p && p.connected)) showToast("Controller disconnected", ""); });
+addEventListener("pointerdown", e => { if (e.pointerType === "mouse" || e.pointerType === "touch" || e.pointerType === "pen") setInputMode("kbd"); }, true);
 
 // ---------- input ----------
 let userPaused = false;
@@ -1532,8 +1800,16 @@ function togglePause() {
   if (state !== "play" && state !== "trip" && !userPaused) return;
   userPaused = !userPaused; Sound.play(userPaused ? "pause" : "resume");
   $("pauseBtn").setAttribute("aria-pressed", String(userPaused));
-  if (userPaused) { holdJump = false; setOverlay("Paused", COARSE ? "Tap Resume to keep going" : "Press P or Space to keep going", true); $("howBtn").hidden = false; overlay.classList.add("tutorial"); }
-  else { overlay.hidden = true; last = performance.now(); }
+  if (userPaused) {
+    holdJump = false; setOverlay("Paused", pauseText(), true); $("howBtn").hidden = false; overlay.classList.add("pause");
+    $("toast").hidden = true;                      // the menu covers the middle, so no message underneath it
+    $("ovActions").classList.add("menu");
+    for (const b of document.querySelectorAll(".pm-only")) b.hidden = false;
+    $("pmFull").hidden = !FS_OK; $("pmRumble").hidden = !padCanRumble();
+    syncMenuLabels();
+    if (inputMode === "pad") setMenuFocus(menuItems()[0]);
+  }
+  else { overlay.hidden = true; clearMenuFocus(); last = performance.now(); if (capeItem && capeItem.waiting) showToast(jumpText(), "", true); }
 }
 function pressJump() {
   if (userPaused) { togglePause(); return; }       // Space / tap resumes from the pause menu
@@ -1572,7 +1848,12 @@ addEventListener("pointerdown", () => Sound.init(), true);
 addEventListener("keydown", e => {
   Sound.init();
   if (!document.getElementById("resetConfirm").hidden) return;
+  inputMode !== "kbd" && setInputMode("kbd");
   if (e.target.closest && e.target.closest("button") && (e.code === "Space" || e.code === "Enter")) return;
+  const arrow = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.code];
+  if (arrow && menuItems().length) { e.preventDefault(); menuMove(arrow[0], arrow[1]); return; }
+  if (arrow && arrow[0] && titleChooserOpen()) { e.preventDefault(); cycleStart(arrow[0]); return; }
+  if (e.code === "KeyF" && FS_OK && !e.repeat) { e.preventDefault(); toggleFullscreen(); return; }
   if (["Space", "ArrowUp", "KeyW"].includes(e.code)) { e.preventDefault(); if (!e.repeat) pressJump(); }
   else if (e.code === "ArrowDown" || e.code === "KeyS") { e.preventDefault(); if (!e.repeat) pressSlide(); }
   else if (e.code === "Enter" && state !== "play" && state !== "trip") pressJump();
@@ -1603,7 +1884,12 @@ function pointerUp() { if (pointerSliding) { pointerSliding = false; releaseSlid
 addEventListener("pointerup", pointerUp);
 addEventListener("pointercancel", pointerUp);
 $("resumeBtn").addEventListener("click", () => { if (userPaused) togglePause(); else resume(); screen.focus({ preventScroll: true }); });
-$("howBtn").addEventListener("click", () => { $("ovHow").hidden = !$("ovHow").hidden; Sound.play("ui"); });
+$("howBtn").addEventListener("click", () => toggleHow());
+function toggleHow(open = $("ovHow").hidden) {
+  $("ovHow").hidden = !open; overlay.classList.toggle("how-open", open);
+  $("howBtn").textContent = open ? "Back" : "How to play"; Sound.play("ui");
+  if (gmenu.el) setMenuFocus($("howBtn"));
+}
 $("restartBtn").addEventListener("click", () => { Sound.play("startOver"); userPaused = false; $("pauseBtn").setAttribute("aria-pressed", "false"); start(); screen.focus({ preventScroll: true }); });
 
 const boxBtn = $("boxBtn");
@@ -1630,6 +1916,7 @@ function holdButton(btn, ms, onDone) {
   btn.addEventListener("keyup", e => { if (e.code === "Space" || e.code === "Enter") stop(); });
   btn.addEventListener("blur", stop);
   btn.addEventListener("click", e => e.preventDefault());
+  return { begin: () => begin(), stop };
 }
 const resetConfirm = $("resetConfirm");
 let resetReturnFocus = null;
@@ -1656,11 +1943,12 @@ function resetProgress() {
   showToast("Progress reset", "Phill's back in his bedroom");
 }
 holdButton($("resetBtn"), 900, () => { Sound.init(); Sound.play("holdOpen"); openResetConfirm(); });
-holdButton($("resetYes"), 1500, resetProgress);
+const resetYesHold = holdButton($("resetYes"), 1500, resetProgress);
 $("resetKeep").addEventListener("click", () => { Sound.play("ui"); closeResetConfirm(); });
 resetConfirm.addEventListener("pointerdown", e => { if (e.target === resetConfirm) closeResetConfirm(); });
 resetConfirm.addEventListener("keydown", e => {
   if (e.key === "Escape") { e.preventDefault(); closeResetConfirm(); }
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); ($("resetKeep") === document.activeElement ? $("resetYes") : $("resetKeep")).focus(); }
   if (e.key === "Tab") {                                 // keep focus inside the card
     const f = [$("resetKeep"), $("resetYes")], i = f.indexOf(document.activeElement);
     e.preventDefault(); f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
@@ -1690,10 +1978,11 @@ function pickStart(i, withCape = false, climb = false, part = "") {
   $("startKitchenCape").setAttribute("aria-pressed", String(i === 2 && withCape && !climb));
   $("startClimb").setAttribute("aria-pressed", String(climb));
   $("startCave").setAttribute("aria-pressed", String(i === 3 && !part));
+  if (pickQuiet) { reset(); state = "ready"; showTitle(); return; }
   start();
 }
 $("pauseBtn").addEventListener("click", () => { togglePause(); screen.focus({ preventScroll: true }); });
-function syncSoundButtons() { $("musicBtn").setAttribute("aria-pressed", String(Sound.musicOn)); $("sfxBtn").setAttribute("aria-pressed", String(Sound.sfxOn)); }
+function syncSoundButtons() { $("musicBtn").setAttribute("aria-pressed", String(Sound.musicOn)); $("sfxBtn").setAttribute("aria-pressed", String(Sound.sfxOn)); syncMenuLabels(); }
 $("musicBtn").addEventListener("click", () => { Sound.init(); Sound.setMusic(!Sound.musicOn); syncSoundButtons(); screen.focus({ preventScroll: true }); });
 $("sfxBtn").addEventListener("click", () => { Sound.init(); Sound.setSfx(!Sound.sfxOn); syncSoundButtons(); if (Sound.sfxOn) Sound.play("ui"); screen.focus({ preventScroll: true }); });
 syncSoundButtons();
@@ -1741,7 +2030,10 @@ function showToast(title, sub, sticky = false) {
 }
 function setOverlay(title, sub, actions) {
   overlay.querySelectorAll(".ov-stats").forEach(e => e.remove());
-  overlay.classList.remove("top"); overlay.classList.remove("tutorial"); overlay.classList.remove("title"); $("ovHint").hidden = true;
+  overlay.classList.remove("top", "tutorial", "title", "pause", "how-open"); $("ovHint").hidden = true;
+  clearMenuFocus(); $("ovActions").classList.remove("menu"); $("ovStart").hidden = true;
+  for (const b of document.querySelectorAll(".pm-only")) b.hidden = true;
+  $("howBtn").textContent = "How to play";
   $("ovLogo").hidden = true; $("screen").classList.remove("is-title");
   $("ovTitle").textContent = title; $("ovSub").textContent = sub;
   $("ovActions").hidden = !actions; overlay.hidden = false; $("howBtn").hidden = true; $("ovHow").hidden = true;
@@ -1779,7 +2071,7 @@ function bumpSound(o) {
   return "bump_soft";
 }
 function startTrip(hole) {
-  state = "trip"; runTrips++;
+  state = "trip"; runTrips++; rumble(hole ? 0.25 : 0.55, 0.5, hole ? 120 : 160);
   trip.fall = hole || null; trip.splashed = false;
   Sound.play(hole === "pit" ? "fall" : hole === "water" ? "slipIn" : "trip");
   P.sliding = false; P.popT = 99; P.getupT = 99; P.gliding = false;
@@ -1823,6 +2115,7 @@ function tickWin(dt) {
   }
 }
 function shatter(o) {
+  rumble(0.15, 0.55, 90);
   Sound.play(o.kind === "web" ? "web" : "crystal", 1, sndAt(o.x)[1]);
   const cx = o.x + o.w / 2, top = o.kind === "bat" ? mothTop(o) : GROUND_Y - (o.h || 20);
   const cols = o.kind === "crystal" ? ["#c9a2ff", "#efe0ff", "#8f5ad8"] : o.kind === "web" ? ["#f2f2f2", "#d0d0d0"] : ["#5a4a6e", "#8a7a9e"];
@@ -1838,7 +2131,7 @@ function puffDust(x, y, n, spread = 1) {
 }
 function dustColor() { return AREA.id === "lair" ? "150, 120, 100" : AREA.id === "freezer" ? "235, 248, 255" : AREA.darkness > 0.3 ? "200, 196, 210" : "228, 220, 205"; }
 function startCutscene() {
-  state = "cutscene"; unlock("sundae"); Sound.stopSong(); Sound.fanfare("sundae");
+  state = "cutscene"; unlock("sundae"); Sound.stopSong(); Sound.fanfare("sundae"); rumble(0.2, 0.5, 250);
   cut = { t: 0, dx: W + 30, dy: -70, frame: "dragon_fly_1", carried: false, fire: [], scared: false, drawn: false };
   P.gliding = false; P.sliding = false; P.getupT = 99; P.shield = false;
 }
@@ -1856,12 +2149,12 @@ function tickCutscene(dt) {
   const hover = { x: sx + 46, y: GROUND_Y - 150 }, grab = { x: sx - 6, y: GROUND_Y - 128 };
   const flap = Math.floor(T / 7) % 2 ? "dragon_fly_1" : "dragon_fly_2";
   if (T >= 90 && T < 150) { const k = ease((T - 90) / 60); c.dx = lerp(W + 30, hover.x, k); c.dy = lerp(-70, hover.y, k); c.frame = flap; }
-  if (!c.seen && c.t >= 90 && c.dx < W - 30 && c.dy > -40) { c.seen = true; Sound.fanfare("dragon"); Sound.play("roar"); }   // it's in view
+  if (!c.seen && c.t >= 90 && c.dx < W - 30 && c.dy > -40) { c.seen = true; Sound.fanfare("dragon"); Sound.play("roar"); rumble(0.9, 0.5, 450); }   // it's in view
   if (!c.saw && c.t >= 134) { c.saw = true; showToast("A dragon?!", ""); }
   // 3. it breathes fire and Phill jumps back, scared
   if (T >= 150 && T < 195) {
     c.frame = "dragon_breathe"; c.dx = hover.x; c.dy = hover.y + Math.sin(T / 4);
-    if (!c.breathed) { c.breathed = true; Sound.play("breath"); }
+    if (!c.breathed) { c.breathed = true; Sound.play("breath"); rumble(0.45, 0.3, 600); }
     for (let i = 0; i < 3; i++) c.fire.push({ x: c.dx + 10, y: c.dy + 24, vx: -0.8 - Math.random() * 1.2, vy: 1.8 + Math.random() * 1.2, t: 0 });
     if (T >= 156 && !c.scared) { c.scared = true; Sound.play("yelp"); }
   }
@@ -1925,10 +2218,10 @@ function tickFinish(dt) {
       const st = document.createElement("span"); st.className = "ov-stats";
       st.textContent = `${frozen ? "Score (frozen)" : "Score"} ${String(s).padStart(5, "0")}  \u00b7  Trips ${runTrips}  \u00b7  Time ${time}`;
       const cr = document.createElement("span"); cr.className = "ov-stats ov-credits";
-      cr.textContent = `Starring Phill and the Dragon  \u00b7  ${COARSE ? "Tap" : "Press R"} to play again`;
+      cr.textContent = `Starring Phill and the Dragon  \u00b7  ${againText()} to play again`;
       $("ovSub").after(st, cr);
     }
-    else setOverlay("Phill found the giant sundae!", `You finished Phill's Adventure to the Ice Cream Cave! ${frozen ? "Score (frozen)" : "Score"}: ${s}. Press R to play again.`, false);
+    else setOverlay("Phill found the giant sundae!", `You finished Phill's Adventure to the Ice Cream Cave! ${frozen ? "Score (frozen)" : "Score"}: ${s}. ${againText()} to play again.`, false);
     overlay.classList.add("top");
   }
 }
@@ -1936,9 +2229,11 @@ function finishTrip() {
   state = "down"; downAt = performance.now();
   if (finale) {
     setOverlay("Phill slipped!", frozen ? "Resume to try the climb again." : "The climb doesn't freeze your score. Resume to try the climb again.", true);
+    if (inputMode === "pad") setMenuFocus($("resumeBtn"));
     return;
   }
   setOverlay("Oof! Phill tripped", `Your score is frozen at ${frozenScore}. Resume to keep going, or start over to score again.`, true);
+  if (inputMode === "pad") setMenuFocus($("resumeBtn"));
 }
 const pad = n => String(n).padStart(5, "0");
 function currentScore() { return frozen ? frozenScore : Math.floor(dist / 10); }
@@ -2018,7 +2313,7 @@ function update(dt) {
   if (capeItem && !P.hasCape) {
     const d = capeItem.x - (P.x + CAPE_STOP_DX);
     worldK = Math.min(worldK, Math.max(0, Math.min(1, Math.sqrt(Math.max(0, d) / 150))));
-    if (d <= 0.5 && P.onGround && !capeItem.waiting) { capeItem.waiting = true; showToast(COARSE ? "Tap Jump" : "Press Space to jump", "", true); }
+    if (d <= 0.5 && P.onGround && !capeItem.waiting) { capeItem.waiting = true; showToast(jumpText(), "", true); }
   } else worldK = Math.min(1, worldK + 0.025 * dt);
   const dx = speed * dt * worldK * (P.onIce ? 1.35 : 1);     // slippery, so he skates faster across ice
   for (const o of obstacles) if (o.kind === "vent") o.t = (o.t || 0) + dt;
@@ -2081,7 +2376,7 @@ function update(dt) {
   if (capeItem) capeItem.t += dt;
   if (capeItem && !P.onGround && phillBoxes().some(b => hit(b, capeBox(capeItem)))) {
     // he catches it at the top of his jump, the cape goes on, he shines, and the game pauses to explain the glide
-    capeItem = null; P.hasCape = true; unlock("kitchenCape"); $("toast").hidden = true; Sound.play("cape");
+    capeItem = null; P.hasCape = true; unlock("kitchenCape"); $("toast").hidden = true; Sound.play("cape"); rumble(0, 0.35, 140);
     for (let i = 0; i < 18; i++) sparkles.push({ x: P.x + 24 + (Math.random() - 0.5) * 44, y: GROUND_Y - 30 + P.y + (Math.random() - 0.5) * 40, t: Math.random() * 10 });
     nextGap = 220 + speed * 22;
     startTutorial("cape");
@@ -2150,7 +2445,7 @@ function update(dt) {
     obstacles = obstacles.filter(o => {
       const boxes = obstacleBoxes(o);
       if (swinging && o.breakable && boxes.some(b => hit(swordBox, b))) { shatter(o); return false; }
-      if (shielding && shieldBox && o.kind === "fireball" && boxes.some(b => hit(shieldBox, b))) { puff(o.x, planeTopOf(o)); Sound.play("block", 1, sndAt(o.x)[1]); return false; }
+      if (shielding && shieldBox && o.kind === "fireball" && boxes.some(b => hit(shieldBox, b))) { puff(o.x, planeTopOf(o)); Sound.play("block", 1, sndAt(o.x)[1]); rumble(0.2, 0.45, 80); return false; }
       return true;
     });
     P.shieldedFire = shielding;
@@ -2158,7 +2453,7 @@ function update(dt) {
   const pb = phillBoxes();
   if (invincible) { /* dev testing: walk through everything */ } else for (const o of obstacles) {
     if (o.fire && P.shieldedFire && o.kind === "vent") {               // with the shield up he can walk right through the vent's fire
-      if (ventActive(o) && !o._blocked && obstacleBoxes(o).some(ob => pb.some(b => hit(b, ob)))) { o._blocked = true; Sound.play("block", 0.8, 0); }
+      if (ventActive(o) && !o._blocked && obstacleBoxes(o).some(ob => pb.some(b => hit(b, ob)))) { o._blocked = true; Sound.play("block", 0.8, 0); rumble(0.2, 0.45, 80); }
       continue;
     }
     for (const ob of obstacleBoxes(o)) for (const b of pb) if (hit(b, ob)) { if (!o.hole) Sound.play(bumpSound(o), 1, sndAt(o.x)[1]); startTrip(o.hole); return; }
@@ -2185,7 +2480,7 @@ function updateTrip(dt) {
   if (trip.fall) {                                 // falling into the water or down the chasm, so there's no floor to land on
     P.vy = Math.min(P.vy + 0.42 * dt, trip.fall === "water" ? 2.2 : 7); P.y += P.vy * dt;
     if (trip.fall === "water" && !trip.splashed && P.y > 2) {
-      trip.splashed = true; Sound.play("splash"); shake = REDUCED ? 0 : 3;
+      trip.splashed = true; Sound.play("splash"); rumble(0.4, 0.7, 220); shake = REDUCED ? 0 : 3;
       for (let i = 0; i < 18; i++) dust.push({ x: P.x + 24 + (Math.random() - 0.5) * 24, y: GROUND_Y + 2, vx: (Math.random() - 0.5) * 2.2, vy: -1.5 - Math.random() * 2, t: 0, life: 22 + Math.random() * 10, splash: true });
     }
     if (trip.t > 55) finishTrip();
@@ -2195,7 +2490,7 @@ function updateTrip(dt) {
     if (trip.hang > 0) { trip.hang -= dt; P.vy = 0; }
     else { P.vy += 0.48 * dt; P.y += P.vy * dt; }
     const landY = -supportUnder();
-    if (P.y >= landY) { P.y = landY; P.vy = 0; trip.landed = true; trip.landT = 0; puffDust(P.x + 30, GROUND_Y - landY - 1, 10, 2); shake = REDUCED ? 0 : 6; Sound.play("thud"); }
+    if (P.y >= landY) { P.y = landY; P.vy = 0; trip.landed = true; trip.landT = 0; puffDust(P.x + 30, GROUND_Y - landY - 1, 10, 2); shake = REDUCED ? 0 : 6; Sound.play("thud"); rumble(0.8, 0.3, 140); }
   } else {
     trip.landT += dt;
     if (speed === 0 && trip.landT > 40) finishTrip();
